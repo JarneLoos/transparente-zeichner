@@ -56,6 +56,8 @@ let __layerSettingsOutsideListener = null;
 const LAYER_HUE_START = 60; // Gelb
 const LAYER_HUE_STEP = 15;  // Schrittgröße (negative Richtung wird intern berechnet)
 
+let showOnlySelected = false;
+
 class Layer {
     constructor(name) {
         this.name = name;
@@ -306,10 +308,19 @@ function renderDrawingCanvas() {
     ctx.fillStyle = typeof canvasBgColor !== 'undefined' ? canvasBgColor : '#ffffff';
     ctx.fillRect(0, 0, drawingCanvas.width, drawingCanvas.height);
 
-    // Layers zeichnen
+    // Layers zeichnen — nutze showOnlySelected Flag
     for (let i = 0; i < layers.length; i++) {
         const layer = layers[i];
-        if (!layer.visible) continue;
+
+        // Wenn "Nur ausgewählte Ebene" aktiv: nur die aktuelle Ebene rendern
+        if (showOnlySelected) {
+            if (i !== currentLayerIndex) {
+                continue;
+            }
+        } else if (!layer.visible) {
+            continue;
+        }
+
         ctx.globalAlpha = layer.opacity;
         ctx.drawImage(layer.canvas, 0, 0);
     }
@@ -592,6 +603,14 @@ function updateLayersPanel() {
 function selectLayer(index) {
     currentLayerIndex = index;
     updateLayersPanel();
+
+    if (showOnlySelected) {
+        showOnlySelected = false;
+        renderDrawingCanvas();
+        updatePreview();
+        showOnlySelected = true;
+        renderDrawingCanvas();
+    }
 }
 
 function setLayerOpacity(index, value) {
@@ -602,8 +621,17 @@ function setLayerOpacity(index, value) {
 
 function toggleLayerVisibility(index, visible) {
     layers[index].visible = visible;
-    renderDrawingCanvas();
-    updatePreview();
+
+    if (showOnlySelected) {
+        showOnlySelected = false;
+        renderDrawingCanvas();
+        updatePreview();
+        showOnlySelected = true;
+        renderDrawingCanvas();
+    } else {
+        renderDrawingCanvas();
+        updatePreview();
+    }
 }
 
 function getCurrentLayer() {
@@ -1256,6 +1284,12 @@ showGuidesInput.addEventListener('change', function () {
     showGuides = this.checked;
     renderDrawingCanvas();
     updatePreview();
+});
+
+const showOnlySelectedInput = document.getElementById('showOnlySelected');
+showOnlySelectedInput.addEventListener('change', function () {
+    showOnlySelected = this.checked;
+    renderDrawingCanvas();
 });
 
 // Flood Fill (Boundary fill with alpha-tolerance and segment check)
