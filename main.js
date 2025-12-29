@@ -998,6 +998,45 @@
             link.click();
         }
 
+        // Neue Funktion: Speichert jede Ebene einzeln als PNG
+        function sanitizeFilename(name) {
+            return name.replace(/[^a-z0-9_\-]/gi, '_');
+        }
+
+        function downloadLayers() {
+            if (!layers || layers.length === 0) return;
+
+            // kleine Verzögerung zwischen Klicks, damit Browser die Downloads nicht blockiert
+            for (let i = 0; i < layers.length; i++) {
+                const layer = layers[i];
+
+                // Kopiere Ebene in temporäres Canvas (Originalgröße)
+                const tmp = document.createElement('canvas');
+                tmp.width = drawingCanvas.width;
+                tmp.height = drawingCanvas.height;
+                const tmpCtx = tmp.getContext('2d');
+
+                // Transparenter Hintergrund: wir zeichnen direkt die Layer-Canvas (enthält Alpha)
+                tmpCtx.clearRect(0, 0, tmp.width, tmp.height);
+                tmpCtx.drawImage(layer.canvas, 0, 0);
+
+                const dataUrl = tmp.toDataURL('image/png');
+
+                const filename = `${String(i + 1).padStart(2, '0')}_${sanitizeFilename(layer.name)}${layer.visible ? '' : '_hidden'}.png`;
+
+                // schedule click leicht gestaffelt
+                setTimeout(() => {
+                    const link = document.createElement('a');
+                    link.href = dataUrl;
+                    link.download = filename;
+                    // some browsers require element in DOM for click to work reliably
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }, i * 120);
+            }
+        }
+
         // Steuerungs-Handlers
         segmentsInput.addEventListener('input', (e) => {
             segmentValue.textContent = e.target.value;
@@ -1040,6 +1079,7 @@ function initializeCanvases() {
         window.toggleLayerVisibility = toggleLayerVisibility;
         window.clearDrawing = clearDrawing;
         window.downloadImage = downloadImage;
+        window.downloadLayers = downloadLayers;
         window.setTool = setTool;
         window.undo = undo;
         window.redo = redo;
