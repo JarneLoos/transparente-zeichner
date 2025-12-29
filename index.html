@@ -33,12 +33,11 @@
                 </section>
 
                 <section class="control-block">
-                    <h3>Pinsel</h3>
                     <label for="brushSize">
                         Pinselgröße:
                         <span class="slider-value" id="brushValue">5</span>
                     </label>
-                    <input type="range" id="brushSize" min="2" max="30" value="5">
+                    <input type="range" id="brushSize" min="2" max="100" value="5">
                 </section>
             </aside>
 
@@ -52,19 +51,19 @@
             <!-- Rechte Sidebar: Preview oben, Layers + Funktionen darunter -->
             <aside class="sidebar-right">
                 <section class="preview-block">
-                    <h3>Preview</h3>
                     <canvas id="previewCanvas" width="300" height="300"></canvas>
                 </section>
 
                 <section class="layers-block">
                     <h3>Ebenen</h3>
-                    <div class="layer-actions" style="display: flex; gap: 8px; margin-bottom: 8px;">
-                        <button class="btn-secondary" onclick="addLayer()">Neue Ebene</button>
-                        <button class="btn-secondary" onclick="clearDrawing()">Ebene leeren</button>
-                        <button class="btn-secondary" onclick="deleteLayer()">Ebene löschen</button>
-                    </div>
-
                     <div class="layers-panel" id="layersPanel"></div>
+
+                    <div class="layer-actions" style="display: flex; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
+                        <button class="btn-secondary" onclick="addLayer()">Neu</button>
+                        <button class="btn-secondary" onclick="clearDrawing()">Leeren</button>
+                        <button class="btn-secondary" onclick="deleteLayer()">Löschen</button>
+                        <button class="btn-secondary" onclick="copyLayer()">Kopieren</button>
+                    </div>
                 </section>
 
                 <section class="other-controls">

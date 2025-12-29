@@ -48,6 +48,14 @@ let segOffX = -200;
 let segOffY = 500;
 const SEGMENT_RADIUS_FACTOR = 1.75;
 
+// Popup / Einstellungen: wiederverwendbares Element
+let __layerSettingsPopup = null;
+let __layerSettingsOutsideListener = null;
+
+// Farben für automatische Layer-Farbfolge (Start bei Gelb, dann rückwärts im Farbkreis)
+const LAYER_HUE_START = 60; // Gelb
+const LAYER_HUE_STEP = 15;  // Schrittgröße (negative Richtung wird intern berechnet)
+
 class Layer {
     constructor(name) {
         this.name = name;
@@ -346,13 +354,22 @@ function drawSegmentGuideOverlay() {
     ctx.restore();
 }
 
-// Ebenen-Funktionen (UI bleibt gleich)
+// Ebenen-Funktionen
 function addLayer(name = null) {
     if (!name) name = `Ebene ${layers.length + 1}`;
     const layer = new Layer(name);
-    const hue = (layers.length * 30) % 360;
+
+    // berechne Hue: starte bei LAYER_HUE_START und gehe rückwärts im Farbkreis
+    const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
     const hslColor = `hsl(${hue}, 70%, 50%)`;
     layer.color = hslToHex(hslColor);
+
+    // Fülle nur das Segment auf der neuen Ebene mit der Layer-Farbe
+    layer.ctx.save();
+    applySegmentClip(layer.ctx);
+    layer.ctx.fillStyle = layer.color;
+    layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
+    layer.ctx.restore();
 
     layers.push(layer);
     currentLayerIndex = layers.length - 1;
@@ -373,6 +390,92 @@ function deleteLayer() {
     updatePreview();
 }
 
+function copyLayer() {
+    if (!layers || layers.length === 0) return;
+
+    // Zustand sichern für Undo
+    saveState();
+
+    const src = layers[currentLayerIndex];
+
+    // Basisname: entferne vorhandene " (n)"-Suffixe, falls vorhanden
+    const baseName = src.name.replace(/\s*\(\d+\)\s*$/, '').trim();
+
+    // Hilfsfunktion für Regex-Escaping
+    function escapeRegex(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // Finde maximalen Index bestehender Kopien: "BaseName (n)"
+    const baseEsc = escapeRegex(baseName);
+    const re = new RegExp('^' + baseEsc + '\\s*\\((\\d+)\\)$');
+    let maxIndex = 0;
+    for (let i = 0; i < layers.length; i++) {
+        const m = layers[i].name.match(re);
+        if (m) {
+            const n = parseInt(m[1], 10);
+            if (!isNaN(n) && n > maxIndex) maxIndex = n;
+        }
+    }
+
+    const nextIndex = maxIndex + 1;
+    const copyName = `${baseName} (${nextIndex})`;
+
+    // Erstelle neue Layer-Instanz (gleiche Pixelgröße wie drawingCanvas)
+    const newLayer = new Layer(copyName);
+    newLayer.opacity = src.opacity;
+    newLayer.visible = src.visible;
+
+    // Berechne automatische Farbe analog zu addLayer (Start-Hue + Schritt)
+    const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
+    const hslColor = `hsl(${hue}, 70%, 50%)`;
+    newLayer.color = hslToHex(hslColor);
+
+    // Kopiere Pixelinhalt vom Quell-Layer
+    newLayer.ctx.clearRect(0, 0, newLayer.canvas.width, newLayer.canvas.height);
+    newLayer.ctx.drawImage(
+        src.canvas,
+        0, 0, src.canvas.width, src.canvas.height,
+        0, 0, newLayer.canvas.width, newLayer.canvas.height
+    );
+
+    // Recolor: setze alle nicht-transparenten Pixel auf die neue Layer-Farbe,
+    // damit die Kopie farblich der automatischen Folge folgt
+    try {
+        const w = newLayer.canvas.width;
+        const h = newLayer.canvas.height;
+        const imageData = newLayer.ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        const rNew = parseInt(newLayer.color.slice(1, 3), 16);
+        const gNew = parseInt(newLayer.color.slice(3, 5), 16);
+        const bNew = parseInt(newLayer.color.slice(5, 7), 16);
+
+        for (let i = 0; i < data.length; i += 4) {
+            const a = data[i + 3];
+            if (a !== 0) {
+                data[i] = rNew;
+                data[i + 1] = gNew;
+                data[i + 2] = bNew;
+                // alpha bleibt erhalten
+            }
+        }
+        newLayer.ctx.putImageData(imageData, 0, 0);
+    } catch (err) {
+        // In sehr restriktiven Umgebungen könnte getImageData fehlschlagen;
+        // Fallback: nichts recolorn, color bleibt gesetzt.
+        console.warn('Recolor failed for copied layer:', err);
+    }
+
+    // Füge über der aktuellen Ebene ein (höherer Index = weiter oben)
+    const insertIndex = currentLayerIndex + 1;
+    layers.splice(insertIndex, 0, newLayer);
+    currentLayerIndex = insertIndex;
+
+    updateLayersPanel();
+    renderDrawingCanvas();
+    updatePreview();
+}
+
 function updateLayersPanel() {
     const panel = document.getElementById('layersPanel');
     panel.innerHTML = '';
@@ -380,73 +483,74 @@ function updateLayersPanel() {
     for (let i = layers.length - 1; i >= 0; i--) {
         const layer = layers[i];
 
-        // Zeile 1: Titel + Farbe
-        const topRow = document.createElement('div');
-        topRow.className = 'layer-top';
+        const layerItem = document.createElement('div');
+        layerItem.className = `layer-item ${i === currentLayerIndex ? 'active' : ''}`;
+        layerItem.dataset.index = i;
+        layerItem.style.display = 'flex';
+        layerItem.style.alignItems = 'center';
+        layerItem.style.gap = '8px';
+        layerItem.style.padding = '6px';
 
+        // 1) Große Checkbox (sichtbarkeit) links
+        const visWrapper = document.createElement('div');
+        visWrapper.className = 'layer-vis-wrapper';
+        const visibilityCheckbox = document.createElement('input');
+        visibilityCheckbox.type = 'checkbox';
+        visibilityCheckbox.className = 'layer-visibility';
+        visibilityCheckbox.checked = layer.visible;
+        visibilityCheckbox.addEventListener('change', (e) => {
+            e.stopPropagation();
+            toggleLayerVisibility(i, visibilityCheckbox.checked);
+        });
+        visibilityCheckbox.addEventListener('click', e => e.stopPropagation());
+        visibilityCheckbox.addEventListener('mousedown', e => e.stopPropagation());
+        visWrapper.appendChild(visibilityCheckbox);
+        layerItem.appendChild(visWrapper);
+
+        // 2) Kleine Farbauswahl
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.className = 'layer-color';
+        colorInput.value = layer.color;
+        colorInput.title = 'Farbe ändern';
+        colorInput.addEventListener('change', (e) => {
+            e.stopPropagation();
+            setLayerColor(i, colorInput.value);
+        });
+        colorInput.addEventListener('click', e => e.stopPropagation());
+        colorInput.addEventListener('mousedown', e => e.stopPropagation());
+        layerItem.appendChild(colorInput);
+
+        // 3) Titel (zentral, klick zum auswählen)
         const title = document.createElement('div');
         title.className = 'layer-title';
         title.textContent = layer.name;
+        title.style.flex = '1';
+        title.style.cursor = 'pointer';
+        title.addEventListener('click', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            selectLayer(i);
+        });
+        layerItem.appendChild(title);
 
-        const colorInput = document.createElement('input');
-        colorInput.type = 'color';
-        colorInput.value = layer.color;
-        colorInput.addEventListener('change', () => setLayerColor(i, colorInput.value));
-        colorInput.addEventListener('click', e => e.stopPropagation());
-        colorInput.addEventListener('mousedown', e => e.stopPropagation());
+        // 4) Zahnrad für Layer-Einstellungen (öffnet Popup)
+        const gearBtn = document.createElement('button');
+        gearBtn.type = 'button';
+        gearBtn.className = 'layer-gear';
+        gearBtn.innerHTML = '⚙';
+        gearBtn.title = 'Einstellungen';
+        gearBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openLayerSettings(i, gearBtn);
+        });
+        layerItem.appendChild(gearBtn);
 
-        topRow.appendChild(title);
-        topRow.appendChild(colorInput);
-
-        // Zeile 2: Checkbox + Slider
-        const bottomRow = document.createElement('div');
-        bottomRow.className = 'layer-bottom';
-
-        const visibilityCheckbox = document.createElement('input');
-        visibilityCheckbox.type = 'checkbox';
-        visibilityCheckbox.checked = layer.visible;
-        visibilityCheckbox.addEventListener('change', () => toggleLayerVisibility(i, visibilityCheckbox.checked));
-        visibilityCheckbox.addEventListener('click', e => e.stopPropagation());
-        visibilityCheckbox.addEventListener('mousedown', e => e.stopPropagation());
-
-        const opacitySlider = document.createElement('input');
-        opacitySlider.type = 'range';
-        opacitySlider.min = '0';
-        opacitySlider.max = '100';
-        opacitySlider.value = Math.round(layer.opacity * 100);
-        opacitySlider.addEventListener('input', () => setLayerOpacity(i, opacitySlider.value));
-        opacitySlider.addEventListener('click', e => e.stopPropagation());
-        opacitySlider.addEventListener('mousedown', e => e.stopPropagation());
-
-        bottomRow.appendChild(visibilityCheckbox);
-        bottomRow.appendChild(opacitySlider);
-
-        // Container für Inhalt (ohne Drag Handle)
-        const contentContainer = document.createElement('div');
-        contentContainer.style.display = 'flex';
-        contentContainer.style.flexDirection = 'column';
-        contentContainer.style.flex = '1';
-
-        contentContainer.appendChild(topRow);
-        contentContainer.appendChild(bottomRow);
-
-        // Drag Handle rechts, volle Höhe
+        // 5) Drag Handle rechts (unverändert)
         const dragHandle = document.createElement('div');
         dragHandle.className = 'layer-drag-handle';
         dragHandle.textContent = '⋮⋮';
         dragHandle.draggable = true;
 
-        // Haupt-Container mit Flexbox
-        const layerItem = document.createElement('div');
-        layerItem.className = `layer-item ${i === currentLayerIndex ? 'active' : ''}`;
-        layerItem.dataset.index = i;
-        layerItem.style.display = 'flex';
-        layerItem.style.alignItems = 'stretch';
-
-        layerItem.appendChild(contentContainer);
-        layerItem.appendChild(dragHandle);
-
-        // Drag Events nur Handle
         dragHandle.addEventListener('dragstart', ev => {
             ev.dataTransfer.setData('text/plain', i.toString());
             layerItem.classList.add('dragging');
@@ -459,13 +563,7 @@ function updateLayersPanel() {
             );
         });
 
-        // Auswahl durch Klick (außer auf Inputs/Handle)
-        layerItem.addEventListener('click', ev => {
-            if (ev.target.tagName === 'INPUT' || ev.target.classList.contains('layer-drag-handle')) return;
-            selectLayer(i);
-        });
-
-        // Drop-Zonen
+        // Drop/drag events auf item
         layerItem.addEventListener('dragover', ev => {
             ev.preventDefault();
             layerItem.classList.add('drag-over');
@@ -484,6 +582,8 @@ function updateLayersPanel() {
                 moveLayer(fromIndex, toIndex);
             }
         });
+
+        layerItem.appendChild(dragHandle);
 
         panel.appendChild(layerItem);
     }
@@ -548,6 +648,91 @@ function setLayerColor(index, color) {
     layer.ctx.putImageData(imageData, 0, 0);
     renderDrawingCanvas();
     updatePreview();
+}
+
+function openLayerSettings(index, anchorEl) {
+    closeLayerSettings();
+
+    const layer = layers[index];
+    if (!layer) return;
+
+    // Erstelle Popup einmalig
+    __layerSettingsPopup = document.createElement('div');
+    __layerSettingsPopup.className = 'layer-settings-popup';
+    __layerSettingsPopup.innerHTML = `
+        <label class="ls-row"><span>Title</span><input type="text" class="ls-title" value="${escapeHtml(layer.name)}" /></label>
+        <label class="ls-row"><span>Opacity</span><input type="range" class="ls-opacity" min="0" max="100" value="${Math.round(layer.opacity * 100)}" /></label>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button type="button" class="btn-secondary ls-close">Schließen</button>
+        </div>
+    `;
+
+    document.body.appendChild(__layerSettingsPopup);
+
+    // Positioniere Popup nahe dem Anchor
+    const aRect = anchorEl.getBoundingClientRect();
+    const popupRect = __layerSettingsPopup.getBoundingClientRect();
+    // prefer on the right; fall back above if nicht platz
+    let left = Math.min(window.innerWidth - popupRect.width - 8, aRect.right + 8);
+    if (left < 8) left = 8;
+    let top = aRect.top;
+    if (top + popupRect.height > window.innerHeight - 8) {
+        top = Math.max(8, aRect.top - popupRect.height - 8);
+    }
+    __layerSettingsPopup.style.left = `${left}px`;
+    __layerSettingsPopup.style.top = `${top}px`;
+
+    // Event handlers
+    const titleInput = __layerSettingsPopup.querySelector('.ls-title');
+    const opacityInput = __layerSettingsPopup.querySelector('.ls-opacity');
+    const closeBtn = __layerSettingsPopup.querySelector('.ls-close');
+
+    titleInput.addEventListener('input', (e) => {
+        layer.name = e.target.value;
+        // Aktualisiere nur den Titel-Text im Panel, ohne komplettes Rebuild
+        const panel = document.getElementById('layersPanel');
+        const titleElems = panel.querySelectorAll('.layer-item');
+        titleElems.forEach(item => {
+            if (parseInt(item.dataset.index, 10) === index) {
+                const t = item.querySelector('.layer-title');
+                if (t) t.textContent = layer.name;
+            }
+        });
+    });
+
+    opacityInput.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        setLayerOpacity(index, val);
+    });
+
+    closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeLayerSettings();
+    });
+
+    // Klick außerhalb schließt Popup
+    __layerSettingsOutsideListener = (ev) => {
+        if (!__layerSettingsPopup) return;
+        if (!__layerSettingsPopup.contains(ev.target) && ev.target !== anchorEl) {
+            closeLayerSettings();
+        }
+    };
+    document.addEventListener('mousedown', __layerSettingsOutsideListener);
+}
+
+function closeLayerSettings() {
+    if (__layerSettingsPopup) {
+        __layerSettingsPopup.remove();
+        __layerSettingsPopup = null;
+    }
+    if (__layerSettingsOutsideListener) {
+        document.removeEventListener('mousedown', __layerSettingsOutsideListener);
+        __layerSettingsOutsideListener = null;
+    }
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": "&#39;" }[m]));
 }
 
 // --- Undo/Redo ---
@@ -1245,6 +1430,7 @@ window.addEventListener('resize', () => {
 // Exponierte Funktionen (für onclicks)
 window.addLayer = addLayer;
 window.deleteLayer = deleteLayer;
+window.copyLayer = copyLayer;
 window.setLayerOpacity = setLayerOpacity;
 window.toggleLayerVisibility = toggleLayerVisibility;
 window.clearDrawing = clearDrawing;

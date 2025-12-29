@@ -144,9 +144,20 @@ label {
     font-size: 14px;
 }
 
-select, input[type="number"], input[type="range"] {
+input[type="number"] {
     width: 100%;
     padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+    background: white;
+}
+
+input[type="range"] {
+    width: 100%;
+    height: 8px;
+    padding: 8px 8px;
     border: 1px solid var(--color-border);
     border-radius: 4px;
     font-size: 14px;
@@ -158,7 +169,7 @@ select, input[type="number"], input[type="range"] {
 input[type="color"] {
     -webkit-appearance: none;
     appearance: none;
-    width: 100px;
+    width: 28px;
     height: 28px;
     padding: 0;
     border: 1px solid #999;
@@ -167,9 +178,9 @@ input[type="color"] {
     cursor: pointer;
 }
 
-input[type="range"] {
-    padding: 0;
-    height: 6px;
+input[type="checkbox"] {
+    width: 24px;
+    height: 24px;
 }
 
 button {
@@ -240,6 +251,84 @@ button {
     border-radius: 6px;
     margin-left: 4px;
 }
+
+/* Layer-Settings: zentriertes, hoverndes, festes Popup (ersetzt vorherige absolute Positionierung) */
+.layer-settings-popup {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 2200;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    padding: 14px;
+    border-radius: 10px;
+    min-width: 260px;
+    max-width: 94vw;
+    width: auto;
+    opacity: 0;
+    animation: layerPopupEnter 160ms ease-out forwards;
+    pointer-events: auto;
+}
+
+/* leichter Einblend-Effekt */
+@keyframes layerPopupEnter {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -46%) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* Inhalt / Layout im Popup */
+.layer-settings-popup .ls-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+    .layer-settings-popup .ls-row span {
+        width: 74px;
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+.layer-settings-popup input[type="text"] {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-family: inherit;
+}
+
+.layer-settings-popup input[type="range"] {
+    width: 100%;
+}
+
+/* Optional: close button stil */
+.layer-settings-popup .ls-close {
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
+/* Stelle sicher, dass das Popup über allem liegt und Klicks abfängt */
+.layer-settings-popup,
+.layer-settings-popup * {
+    box-sizing: border-box;
+}
+
+    /* Verhindere, dass inline left/top vom JS das Layout bricht */
+    .layer-settings-popup[style] {
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important;
+    }
 
 /* Responsive: mobile -> single column */
 @media (max-width: 980px) {
