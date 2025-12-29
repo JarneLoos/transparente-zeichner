@@ -8,91 +8,85 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎨 Transparente Zeichner</h1>
+        <!--<h1>🎨 Transparente Zeichner</h1>-->
 
-        <div class="content">
-            <!-- Zeichenbereich -->
-            <div class="canvas-section">
-                <h2>Zeichne im Segment</h2>
-                <div id="canvasViewport">
-                    <canvas id="drawingCanvas" width="400" height="400"></canvas>
-                </div>
-            </div>
-
-            <!-- Kaleidoskop-Vorschau -->
-            <div class="canvas-section">
-                <h2>Transparent Vorschau</h2>
-                <canvas id="previewCanvas" width="400" height="400"></canvas>
-            </div>
-        </div>
-
-        <!-- Steuerungen -->
-        <div class="controls">
-            <div class="control-group">
-                <label for="brushSize">
-                    Pinselgröße:
-                    <span class="slider-value" id="brushValue">5</span>
-                </label>
-                <input type="range" id="brushSize" min="2" max="30" value="5">
-            </div>
-
-            <div class="control-group">
-                <label>Werkzeug:</label>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                    <button class="btn-secondary" id="toolBrush" onclick="setTool('brush')" style="background: var(--color-primary); color: white;">✏️ Stift</button>
-                    <button class="btn-secondary" id="toolEraser" onclick="setTool('eraser')">🧽 Radierer</button>
-                    <button class="btn-secondary" id="toolBucket" onclick="setTool('bucket')">🪣 Füllen</button>
-                    <button class="btn-secondary" id="toolLine" onclick="setTool('line')">📏 Linie</button>
-                    <button class="btn-secondary" id="toolCircle" onclick="setTool('circle')">⭕ Kreis</button>
-                    <button class="btn-secondary" id="toolRectangle" onclick="setTool('rectangle')">▭ Rechteck</button>
-                </div>
-            </div>
-
-            <div class="control-group">
-                <label>Ebenen:</label>
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                    <button class="btn-secondary" onclick="addLayer()">Neue Ebene</button>
-                    <button class="btn-secondary" onclick="clearDrawing()">Ebene leeren</button>
-                    <button class="btn-secondary" onclick="deleteLayer()">Ebene löschen</button>
-                </div>
-            </div>
-
-            <div class="control-group">
-                <div>
-                    <div class="layers-panel" id="layersPanel"></div>
-                </div>
-            </div>
-
-            <div class="control-group">
-                <label for="segments">
-                    Anzahl der Segmente:
-                    <span class="slider-value" id="segmentValue">12</span>
-                </label>
-                <input type="range" id="segments" min="2" max="24" value="12" step="2">
-            </div>
-
-            <div class="control-group">
-                <label for="showGuides" style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="showGuides" checked>
-                    Hilfslinien anzeigen
-                </label>
-            </div>
-
-            <div class="control-group">
-                <label for="bgColorPicker">
-                    Hintergrundfarbe:
-                    <input type="color" id="bgColorPicker" value="#ffffff" />
-                </label>
-            </div>
-
-            <div class="control-group">
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+        <div class="app-grid">
+            <!-- Linke Sidebar: Undo/Redo + Save + Tools & Pinselgröße -->
+            <aside class="sidebar-left">
+                <section class="left-top-buttons">
                     <button class="btn-secondary" onclick="undo()">≪ Undo</button>
                     <button class="btn-secondary" onclick="redo()">≫ Redo</button>
                     <button class="btn-secondary" onclick="downloadImage()">Bild Speichern</button>
                     <button class="btn-secondary" onclick="downloadLayers()">Layers Speichern</button>
+                </section>
+
+                <section class="tool-block">
+                    <h3>Werkzeuge</h3>
+                    <div class="tools-grid">
+                        <button class="btn-secondary" id="toolBrush" onclick="setTool('brush')" style="background: var(--color-primary); color: white;">✏️ Stift</button>
+                        <button class="btn-secondary" id="toolEraser" onclick="setTool('eraser')">🧽 Radierer</button>
+                        <button class="btn-secondary" id="toolBucket" onclick="setTool('bucket')">🪣 Füllen</button>
+                        <button class="btn-secondary" id="toolLine" onclick="setTool('line')">📏 Linie</button>
+                        <button class="btn-secondary" id="toolCircle" onclick="setTool('circle')">⭕ Kreis</button>
+                        <button class="btn-secondary" id="toolRectangle" onclick="setTool('rectangle')">▭ Rechteck</button>
+                    </div>
+                </section>
+
+                <section class="control-block">
+                    <h3>Pinsel</h3>
+                    <label for="brushSize">
+                        Pinselgröße:
+                        <span class="slider-value" id="brushValue">5</span>
+                    </label>
+                    <input type="range" id="brushSize" min="2" max="30" value="5">
+                </section>
+            </aside>
+
+            <!-- Mittlere Spalte: großes, zentriertes Canvas -->
+            <main class="canvas-col">
+                <div id="canvasViewport">
+                    <canvas id="drawingCanvas" width="1200" height="1200"></canvas>
                 </div>
-            </div>
+            </main>
+
+            <!-- Rechte Sidebar: Preview oben, Layers + Funktionen darunter -->
+            <aside class="sidebar-right">
+                <section class="preview-block">
+                    <h3>Preview</h3>
+                    <canvas id="previewCanvas" width="300" height="300"></canvas>
+                </section>
+
+                <section class="layers-block">
+                    <h3>Ebenen</h3>
+                    <div class="layer-actions" style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <button class="btn-secondary" onclick="addLayer()">Neue Ebene</button>
+                        <button class="btn-secondary" onclick="clearDrawing()">Ebene leeren</button>
+                        <button class="btn-secondary" onclick="deleteLayer()">Ebene löschen</button>
+                    </div>
+
+                    <div class="layers-panel" id="layersPanel"></div>
+                </section>
+
+                <section class="other-controls">
+                    <h3>Weitere Einstellungen</h3>
+
+                    <label for="segments">
+                        Anzahl der Segmente:
+                        <span class="slider-value" id="segmentValue">12</span>
+                    </label>
+                    <input type="range" id="segments" min="8" max="24" value="12" step="2">
+
+                    <label for="showGuides" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                        <input type="checkbox" id="showGuides" checked>
+                        Hilfslinien anzeigen
+                    </label>
+
+                    <label for="bgColorPicker" style="margin-top: 8px; display: flex; align-items: center; gap:8px;">
+                        Hintergrundfarbe:
+                        <input type="color" id="bgColorPicker" value="#ffffff" />
+                    </label>
+                </section>
+            </aside>
         </div>
     </div>
 
