@@ -30,6 +30,11 @@ h1 {
     color: var(--color-primary);
 }
 
+h3 {
+    font-size: 16px;
+    margin-bottom: 8px;
+}
+
 /* Gesamt-Layout: linke Sidebar | Canvas (zentriert) | rechte Sidebar */
 .app-grid {
     display: grid;

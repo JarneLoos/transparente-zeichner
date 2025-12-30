@@ -82,11 +82,15 @@ function adjustCanvasViewportSize() {
     const left = document.querySelector('.sidebar-left');
     const right = document.querySelector('.sidebar-right');
 
-    const leftW = left ? left.getBoundingClientRect().width : 0;
-    const rightW = right ? right.getBoundingClientRect().width : 0;
+    // Wenn wir auf schmalen Bildschirmen sind (CSS @media max-width:980px),
+    // liegen Sidebars unter dem Canvas — ihre Breiten dürfen nicht abgezogen werden.
+    const isMobile = window.matchMedia('(max-width: 980px)').matches;
+
+    const leftW = (!isMobile && left) ? left.getBoundingClientRect().width : 0;
+    const rightW = (!isMobile && right) ? right.getBoundingClientRect().width : 0;
 
     // Body/container padding (20px links + 20px rechts)
-    const horizPadding = 100;
+    const horizPadding = 50;
 
     // verfügbare Breite für die mittlere Spalte (CSS-Pixel)
     const availableWidth = Math.max(120, window.innerWidth - leftW - rightW - horizPadding);
@@ -96,7 +100,6 @@ function adjustCanvasViewportSize() {
     const availableHeight = Math.max(120, window.innerHeight - Math.max(0, rect.top) + 20);
 
     // Quadratische Viewport-Größe: so groß wie möglich, aber kleiner als beides.
-    // etwas Innenabstand verwenden (0.95) damit Buttons nicht anstoßen
     const size = Math.floor(Math.min(availableWidth, availableHeight) * 0.95);
 
     viewport.style.width = size + 'px';

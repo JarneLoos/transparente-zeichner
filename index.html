@@ -16,8 +16,6 @@
                 <section class="left-top-buttons">
                     <button class="btn-secondary" onclick="undo()">≪ Undo</button>
                     <button class="btn-secondary" onclick="redo()">≫ Redo</button>
-                    <button class="btn-secondary" onclick="downloadImage()">Bild Speichern</button>
-                    <button class="btn-secondary" onclick="downloadLayers()">Layers Speichern</button>
                 </section>
 
                 <section class="tool-block">
@@ -41,7 +39,7 @@
                 </section>
 
                 <section class="other-controls">
-                    <h4>Weitere Einstellungen</h4>
+                    <h3>Weitere Einstellungen</h3>
 
                     <label for="segments">
                         Anzahl der Segmente:
@@ -58,6 +56,11 @@
                         Hintergrundfarbe:
                         <input type="color" id="bgColorPicker" value="#ffffff" />
                     </label>
+
+                    <section class="left-top-buttons">
+                        <button class="btn-secondary" onclick="downloadImage()">Bild Speichern</button>
+                        <button class="btn-secondary" onclick="downloadLayers()">Layers Speichern</button>
+                    </section>
                 </section>
             </aside>
 
