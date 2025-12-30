@@ -39,6 +39,26 @@
                     </label>
                     <input type="range" id="brushSize" min="2" max="100" value="5">
                 </section>
+
+                <section class="other-controls">
+                    <h4>Weitere Einstellungen</h4>
+
+                    <label for="segments">
+                        Anzahl der Segmente:
+                        <span class="slider-value" id="segmentValue">12</span>
+                    </label>
+                    <input type="range" id="segments" min="8" max="24" value="12" step="2">
+
+                    <label for="showGuides" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                        <input type="checkbox" id="showGuides" checked>
+                        Hilfslinien anzeigen
+                    </label>
+
+                    <label for="bgColorPicker" style="margin-top: 8px; display: flex; align-items: center; gap:8px;">
+                        Hintergrundfarbe:
+                        <input type="color" id="bgColorPicker" value="#ffffff" />
+                    </label>
+                </section>
             </aside>
 
             <!-- Mittlere Spalte: großes, zentriertes Canvas -->
@@ -70,26 +90,6 @@
                         Nur ausgewählte Ebene anzeigen
                     </label>
 
-                </section>
-
-                <section class="other-controls">
-                    <h3>Weitere Einstellungen</h3>
-
-                    <label for="segments">
-                        Anzahl der Segmente:
-                        <span class="slider-value" id="segmentValue">12</span>
-                    </label>
-                    <input type="range" id="segments" min="8" max="24" value="12" step="2">
-
-                    <label for="showGuides" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-                        <input type="checkbox" id="showGuides" checked>
-                        Hilfslinien anzeigen
-                    </label>
-
-                    <label for="bgColorPicker" style="margin-top: 8px; display: flex; align-items: center; gap:8px;">
-                        Hintergrundfarbe:
-                        <input type="color" id="bgColorPicker" value="#ffffff" />
-                    </label>
                 </section>
             </aside>
         </div>

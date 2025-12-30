@@ -86,14 +86,14 @@ function adjustCanvasViewportSize() {
     const rightW = right ? right.getBoundingClientRect().width : 0;
 
     // Body/container padding (20px links + 20px rechts)
-    const horizPadding = 40;
+    const horizPadding = 100;
 
     // verfügbare Breite für die mittlere Spalte (CSS-Pixel)
     const availableWidth = Math.max(120, window.innerWidth - leftW - rightW - horizPadding);
 
     // verfügbare Höhe ab der Oberkante des Viewports bis zum unteren Fensterrand
     const rect = viewport.getBoundingClientRect();
-    const availableHeight = Math.max(120, window.innerHeight - Math.max(0, rect.top) - 20);
+    const availableHeight = Math.max(120, window.innerHeight - Math.max(0, rect.top) + 20);
 
     // Quadratische Viewport-Größe: so groß wie möglich, aber kleiner als beides.
     // etwas Innenabstand verwenden (0.95) damit Buttons nicht anstoßen
@@ -123,6 +123,18 @@ function resizeDrawingCanvas() {
     // Save old sizes to resample layers
     const oldW = drawingCanvas.width;
     const oldH = drawingCanvas.height;
+
+    // --- Keep segment offset proportional to canvas size ---
+    // segOffX / segOffY are stored in canvas-internal pixels. When the
+    // internal buffer size changes (e.g. on window resize or different DPR)
+    // we must scale these offsets so the segment remains at the same
+    // relative position.
+    if (oldW && oldH) {
+        const scaleX = pixelW / oldW;
+        const scaleY = pixelH / oldH;
+        segOffX *= scaleX;
+        segOffY *= scaleY;
+    }
 
     // Resize main drawing canvas (this resets its context)
     drawingCanvas.width = pixelW;
@@ -1244,6 +1256,7 @@ drawingCanvas.addEventListener('wheel', (e) => {
     clampPan();
     updateTransformStyle();
 }, { passive: false });
+
 
 // Keyboard shortcuts for undo/redo
 document.addEventListener('keydown', e => {
