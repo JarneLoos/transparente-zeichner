@@ -32,6 +32,7 @@ h1 {
 
 h3 {
     font-size: 16px;
+    margin-top: 0;
     margin-bottom: 8px;
 }
 
@@ -143,7 +144,8 @@ h3 {
 label {
     display: block;
     font-weight: 500;
-    margin-bottom: 8px;
+    margin-top: 8px;
+    margin-bottom: 4px;
     font-size: 14px;
 }
 
@@ -395,11 +397,10 @@ button {
         grid-column: 1 / 2;
         grid-row: 2;
         background: var(--color-surface);
-        padding: 16px;
+        padding: 8px;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         max-width: 220px;
         justify-self: start;
-        margin-top: 0;
     }
 }
