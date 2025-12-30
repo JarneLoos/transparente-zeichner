@@ -828,15 +828,15 @@ function clampPan() {
     const viewH = viewport.clientHeight;
 
     const canvasRect = drawingCanvas.getBoundingClientRect();
-    const canvasW = canvasRect.width * scale;
-    const canvasH = canvasRect.height * scale;
+    const canvasW = canvasRect.width;
+    const canvasH = canvasRect.height;
 
     const TOLERANCE = 200;
 
     if (canvasW <= viewW) {
         offsetX = (viewW - canvasW) / 2;
     } else {
-        const minX = viewW - canvasW;
+        const minX = (viewW - canvasW);
         const maxX = 0;
         offsetX = softClamp(offsetX, minX, maxX, TOLERANCE);
     }
@@ -1452,8 +1452,8 @@ window.addEventListener('resize', () => {
 const mq = window.matchMedia('(max-width: 980px)');
 if (mq.addEventListener) {
     mq.addEventListener('change', () => syncOtherControlsPanel());
-} else if (mq.addListener) {
-    mq.addListener(() => syncOtherControlsPanel());
+} else if (mq.addEventListener) {
+    mq.addEventListener(() => syncOtherControlsPanel());
 }
 
 // Exponierte Funktionen (für onclicks)
