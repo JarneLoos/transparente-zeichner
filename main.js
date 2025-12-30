@@ -51,6 +51,8 @@ const SEGMENT_RADIUS_FACTOR = 1.75;
 // Popup / settings: reusable element
 let __layerSettingsPopup = null;
 let __layerSettingsOutsideListener = null;
+let __exportPopup = null;
+let __exportOutsideListener = null;
 
 // Colors for automatic layer color sequence (start at yellow)
 const LAYER_HUE_START = 60; // yellow
@@ -349,19 +351,30 @@ function drawSegmentGuideOverlay() {
 }
 
 // Layers functions
-function addLayer(name = null) {
+function addLayer(name = null, opacity = 0.5, visible = true, color = null, canvas = null) {
     if (!name) name = `Layer ${layers.length + 1}`;
     const layer = new Layer(name);
+    layer.opacity = opacity;
+    layer.visible = visible;
 
-    const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
-    const hslColor = `hsl(${hue}, 70%, 50%)`;
-    layer.color = hslToHex(hslColor);
+    if (!color) {
+        const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
+        const hslColor = `hsl(${hue}, 70%, 50%)`;
+        layer.color = hslToHex(hslColor);
+    } else {
+        layer.color = color;
+    }
 
-    layer.ctx.save();
-    applySegmentClip(layer.ctx);
-    layer.ctx.fillStyle = layer.color;
-    layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
-    layer.ctx.restore();
+    if (!canvas) {
+        layer.ctx.save();
+        applySegmentClip(layer.ctx);
+        layer.ctx.fillStyle = layer.color;
+        layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
+        layer.ctx.restore();
+    } else {
+        layer.canvas = canvas;
+        layer.ctx = canvas.getContext('2d');
+    }
 
     layers.push(layer);
     currentLayerIndex = layers.length - 1;
@@ -1315,19 +1328,233 @@ function clearDrawing() {
     updatePreview();
 }
 
-function downloadImage() {
+function importProject() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        try {
+            const text = await f.text();
+            const project = JSON.parse(text);
+            await loadProject(project);
+            alert('Projekt erfolgreich geladen.');
+        } catch (err) {
+            console.error(err);
+            alert('Fehler beim Laden der Datei. Ist es eine gültige Projekt-JSON?');
+        }
+    };
+    input.click();
+}
+
+async function loadProject(project) {
+    // Grundvalidierung
+    if (!project || !project.meta) throw new Error('Ungültiges Projektformat');
+
+    // Setze UI-Werte
+    if (project.settings) {
+        const s = project.settings;
+        if (document.getElementById('segments')) document.getElementById('segments').value = s.segments ?? 12;
+    }
+
+    // Entferne existierende Layer
+    layers = [];
+    const layersPanel = document.getElementById('layersPanel');
+    if (layersPanel) layersPanel.innerHTML = '';
+
+    // Erstelle Layer aus project.layers
+    if (Array.isArray(project.layers)) {
+        // lade alle Bilder (Promises)
+        const promises = project.layers.map((layerMeta, idx) => createLayerFromDataURL(layerMeta, idx));
+        await Promise.all(promises);
+    }
+
+    updateLayersPanel();
+    renderDrawingCanvas();
+    updatePreview();
+    updateTransformStyle();
+}
+
+// ---------- Hilfsfunktion: Layer aus DataURL anlegen ----------
+function createLayerFromDataURL(layerMeta, idx) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            // Erstelle Canvas für die Layer (gleiche Größe wie Haupt-Canvas)
+            const c = document.createElement('canvas');
+            c.width = drawingCanvas.width;
+            c.height = drawingCanvas.height;
+            const ctx = c.getContext('2d');
+
+            // Zeichne die geladene Bild-DataURL (skaliere falls nötig)
+            ctx.clearRect(0, 0, c.width, c.height);
+            // Falls das gespeicherte Bild dieselbe Größe hat: direkt zeichnen
+            // sonst skaliere proportional
+            const scale = Math.min(c.width / img.width, c.height / img.height);
+            const w = img.width * scale;
+            const h = img.height * scale;
+            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, w, h);
+
+            addLayer(layerMeta.name, layerMeta.opacity, layerMeta.visible, layerMeta.color, c);
+
+            resolve();
+        };
+        img.onerror = (e) => reject(new Error('Bild konnte nicht geladen werden'));
+        img.src = layerMeta.image;
+    });
+}
+
+function openExportPopup() {
+    closeExportPopup();
+
+    // Create popup
+    __exportPopup = document.createElement('div');
+    __exportPopup.className = 'export-popup';
+    __exportPopup.innerHTML = `
+        <div>
+            <h3>Export</h3>
+        </div>
+        <div class="export-options" style="display: flex; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
+            <button class="btn-secondary" onclick="exportAsJSON()">Projekt as jason</button>
+            <button class="btn-secondary" onclick="exportAsPNG()">Preview as png</button>
+            <button class="btn-secondary" onclick="exportLayersAsPNG()">Layers as single png</button>
+            <button class="btn-secondary" onclick="exportLayersAsPNGs()">Layers as multiple png</button>
+        </div>
+                    
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn-secondary" onclick="closeExportPopup()">Close</button>
+        </div>
+    `;
+
+    document.body.appendChild(__exportPopup);
+
+    __exportOutsideListener = (ev) => {
+        if (!__exportPopup) return;
+        if (!__exportPopup.contains(ev.target)) {
+            closeExportPopup();
+        }
+    };
+    document.addEventListener('mousedown', __exportOutsideListener);
+}
+
+function closeExportPopup() {
+    if (__exportPopup) {
+        __exportPopup.remove();
+        __exportPopup = null;
+    }
+    if (__exportOutsideListener) {
+        document.removeEventListener('mousedown', __exportOutsideListener);
+        __exportOutsideListener = null;
+    }
+}
+
+async function exportAsJSON() {
+    const filename = `transparent_project_${new Date().toISOString()}.json`;
+    const project = {
+        schemaVersion: 1,
+        meta: {
+            name: filename.replace('.json', ''),
+            exportedAt: new Date().toISOString(),
+        },
+        settings: {
+            segments: Number(document.getElementById('segments')?.value ?? 12),
+        },
+        layers: await Promise.all(layers.map(async (layer, idx) => {
+            // für jede Layer: meta + image dataURL
+            // Wenn deine Layer-Canvas mehrere Größen haben, skaliere oder setze projektweite Größe
+            const canvas = layer.canvas;
+            // toDataURL ist synchron, aber ich lasse es in Promise um konsistent zu sein:
+            const dataURL = canvas.toDataURL('image/png');
+            return {
+                idx: idx,
+                name: layer.name,
+                opacity: layer.opacity,
+                visible: layer.visible,
+                color: layer.color,
+                image: dataURL
+            };
+        }))
+    };
+
+    const blob = new Blob([JSON.stringify(project)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    closeExportPopup();
+}
+
+function exportAsPNG() {
     const link = document.createElement('a');
-    link.download = 'kaleidoscope.png';
+    link.download = `transparent_preview_${new Date().toISOString()}.json`;
     link.href = previewCanvas.toDataURL();
     link.click();
+
+    closeExportPopup();
 }
 
-// Neue Funktion: Speichert jede Ebene einzeln als PNG
-function sanitizeFilename(name) {
-    return name.replace(/[^a-z0-9_\-]/gi, '_');
+function exportLayersAsPNG() {
+    const layerCount = layers.length;
+
+    // 1️⃣ Raster berechnen (möglichst quadratisch)
+    const columns = Math.ceil(Math.sqrt(layerCount));
+    const rows = Math.ceil(layerCount / columns);
+
+    // 2️⃣ Layer-Größe (alle gleich angenommen)
+    const layerWidth = layers[0].canvas.width;
+    const layerHeight = layers[0].canvas.height;
+
+    // 3️⃣ Export-Canvas erstellen
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = columns * layerWidth;
+    exportCanvas.height = rows * layerHeight;
+
+    const ctx = exportCanvas.getContext('2d');
+    ctx.clearRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+    // Optional: Hintergrundfarbe
+    ctx.fillStyle = '#00000000'; // transparent
+    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+
+    // 4️⃣ Layer ins Raster zeichnen
+    layers.forEach((layer, index) => {
+        if (layer.visible === false) return; // optional: unsichtbare überspringen
+
+        const col = index % columns;
+        const row = Math.floor(index / columns);
+
+        const x = col * layerWidth;
+        const y = row * layerHeight;
+
+        ctx.globalAlpha = layer.opacity ?? 1;
+        ctx.drawImage(layer.canvas, x, y);
+
+        ctx.fillStyle = 'white';
+        ctx.font = '64px sans-serif';
+        ctx.fillText(layer.name ?? `Layer ${index + 1}`, x + 10, y + 50);
+    });
+
+    ctx.globalAlpha = 1;
+
+    // 5️⃣ Download auslösen
+    const dataURL = exportCanvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = dataURL;
+    a.download = `transparent_layers_${new Date().toISOString()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    closeExportPopup();
 }
 
-function downloadLayers() {
+function exportLayersAsPNGs() {
     if (!layers || layers.length === 0) return;
 
     // kleine Verzögerung zwischen Klicks, damit Browser die Downloads nicht blockiert
@@ -1359,6 +1586,12 @@ function downloadLayers() {
             document.body.removeChild(link);
         }, i * 120);
     }
+
+    closeExportPopup();
+}
+
+function sanitizeFilename(name) {
+    return name.replace(/[^a-z0-9_\-]/gi, '_');
 }
 
 // Steuerungs-Handlers
@@ -1463,8 +1696,12 @@ window.copyLayer = copyLayer;
 window.setLayerOpacity = setLayerOpacity;
 window.toggleLayerVisibility = toggleLayerVisibility;
 window.clearDrawing = clearDrawing;
-window.downloadImage = downloadImage;
-window.downloadLayers = downloadLayers;
+window.importProject = importProject;
+window.openExportPopup = openExportPopup;
+window.exportAsJSON = exportAsJSON;
+window.exportAsPNG = exportAsPNG;
+window.exportLayersAsPNG = exportLayersAsPNG;
+window.exportLayersAsPNGs = exportLayersAsPNGs;
 window.setTool = setTool;
 window.undo = undo;
 window.redo = redo;
