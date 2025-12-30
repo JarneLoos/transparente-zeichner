@@ -56,6 +56,8 @@ let __layerSettingsOutsideListener = null;
 const LAYER_HUE_START = 60; // Gelb
 const LAYER_HUE_STEP = 15;  // Schrittgröße (negative Richtung wird intern berechnet)
 
+let showOnlySelected = false;
+
 class Layer {
     constructor(name) {
         this.name = name;
@@ -80,21 +82,24 @@ function adjustCanvasViewportSize() {
     const left = document.querySelector('.sidebar-left');
     const right = document.querySelector('.sidebar-right');
 
-    const leftW = left ? left.getBoundingClientRect().width : 0;
-    const rightW = right ? right.getBoundingClientRect().width : 0;
+    // Wenn wir auf schmalen Bildschirmen sind (CSS @media max-width:980px),
+    // liegen Sidebars unter dem Canvas — ihre Breiten dürfen nicht abgezogen werden.
+    const isMobile = window.matchMedia('(max-width: 980px)').matches;
+
+    const leftW = (!isMobile && left) ? left.getBoundingClientRect().width : 0;
+    const rightW = (!isMobile && right) ? right.getBoundingClientRect().width : 0;
 
     // Body/container padding (20px links + 20px rechts)
-    const horizPadding = 40;
+    const horizPadding = 50;
 
     // verfügbare Breite für die mittlere Spalte (CSS-Pixel)
     const availableWidth = Math.max(120, window.innerWidth - leftW - rightW - horizPadding);
 
     // verfügbare Höhe ab der Oberkante des Viewports bis zum unteren Fensterrand
     const rect = viewport.getBoundingClientRect();
-    const availableHeight = Math.max(120, window.innerHeight - Math.max(0, rect.top) - 20);
+    const availableHeight = Math.max(120, window.innerHeight - Math.max(0, rect.top) + 20);
 
     // Quadratische Viewport-Größe: so groß wie möglich, aber kleiner als beides.
-    // etwas Innenabstand verwenden (0.95) damit Buttons nicht anstoßen
     const size = Math.floor(Math.min(availableWidth, availableHeight) * 0.95);
 
     viewport.style.width = size + 'px';
@@ -121,6 +126,18 @@ function resizeDrawingCanvas() {
     // Save old sizes to resample layers
     const oldW = drawingCanvas.width;
     const oldH = drawingCanvas.height;
+
+    // --- Keep segment offset proportional to canvas size ---
+    // segOffX / segOffY are stored in canvas-internal pixels. When the
+    // internal buffer size changes (e.g. on window resize or different DPR)
+    // we must scale these offsets so the segment remains at the same
+    // relative position.
+    if (oldW && oldH) {
+        const scaleX = pixelW / oldW;
+        const scaleY = pixelH / oldH;
+        segOffX *= scaleX;
+        segOffY *= scaleY;
+    }
 
     // Resize main drawing canvas (this resets its context)
     drawingCanvas.width = pixelW;
@@ -306,10 +323,19 @@ function renderDrawingCanvas() {
     ctx.fillStyle = typeof canvasBgColor !== 'undefined' ? canvasBgColor : '#ffffff';
     ctx.fillRect(0, 0, drawingCanvas.width, drawingCanvas.height);
 
-    // Layers zeichnen
+    // Layers zeichnen — nutze showOnlySelected Flag
     for (let i = 0; i < layers.length; i++) {
         const layer = layers[i];
-        if (!layer.visible) continue;
+
+        // Wenn "Nur ausgewählte Ebene" aktiv: nur die aktuelle Ebene rendern
+        if (showOnlySelected) {
+            if (i !== currentLayerIndex) {
+                continue;
+            }
+        } else if (!layer.visible) {
+            continue;
+        }
+
         ctx.globalAlpha = layer.opacity;
         ctx.drawImage(layer.canvas, 0, 0);
     }
@@ -592,6 +618,14 @@ function updateLayersPanel() {
 function selectLayer(index) {
     currentLayerIndex = index;
     updateLayersPanel();
+
+    if (showOnlySelected) {
+        showOnlySelected = false;
+        renderDrawingCanvas();
+        updatePreview();
+        showOnlySelected = true;
+        renderDrawingCanvas();
+    }
 }
 
 function setLayerOpacity(index, value) {
@@ -602,8 +636,17 @@ function setLayerOpacity(index, value) {
 
 function toggleLayerVisibility(index, visible) {
     layers[index].visible = visible;
-    renderDrawingCanvas();
-    updatePreview();
+
+    if (showOnlySelected) {
+        showOnlySelected = false;
+        renderDrawingCanvas();
+        updatePreview();
+        showOnlySelected = true;
+        renderDrawingCanvas();
+    } else {
+        renderDrawingCanvas();
+        updatePreview();
+    }
 }
 
 function getCurrentLayer() {
@@ -1217,6 +1260,7 @@ drawingCanvas.addEventListener('wheel', (e) => {
     updateTransformStyle();
 }, { passive: false });
 
+
 // Keyboard shortcuts for undo/redo
 document.addEventListener('keydown', e => {
     if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
@@ -1256,6 +1300,12 @@ showGuidesInput.addEventListener('change', function () {
     showGuides = this.checked;
     renderDrawingCanvas();
     updatePreview();
+});
+
+const showOnlySelectedInput = document.getElementById('showOnlySelected');
+showOnlySelectedInput.addEventListener('change', function () {
+    showOnlySelected = this.checked;
+    renderDrawingCanvas();
 });
 
 // Flood Fill (Boundary fill with alpha-tolerance and segment check)

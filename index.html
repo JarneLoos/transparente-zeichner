@@ -16,8 +16,6 @@
                 <section class="left-top-buttons">
                     <button class="btn-secondary" onclick="undo()">≪ Undo</button>
                     <button class="btn-secondary" onclick="redo()">≫ Redo</button>
-                    <button class="btn-secondary" onclick="downloadImage()">Bild Speichern</button>
-                    <button class="btn-secondary" onclick="downloadLayers()">Layers Speichern</button>
                 </section>
 
                 <section class="tool-block">
@@ -38,6 +36,31 @@
                         <span class="slider-value" id="brushValue">5</span>
                     </label>
                     <input type="range" id="brushSize" min="2" max="100" value="5">
+                </section>
+
+                <section class="other-controls">
+                    <h3>Weitere Einstellungen</h3>
+
+                    <label for="segments">
+                        Anzahl der Segmente:
+                        <span class="slider-value" id="segmentValue">12</span>
+                    </label>
+                    <input type="range" id="segments" min="8" max="24" value="12" step="2">
+
+                    <label for="showGuides" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                        <input type="checkbox" id="showGuides" checked>
+                        Hilfslinien anzeigen
+                    </label>
+
+                    <label for="bgColorPicker" style="margin-top: 8px; display: flex; align-items: center; gap:8px;">
+                        Hintergrundfarbe:
+                        <input type="color" id="bgColorPicker" value="#ffffff" />
+                    </label>
+
+                    <section class="left-top-buttons">
+                        <button class="btn-secondary" onclick="downloadImage()">Bild Speichern</button>
+                        <button class="btn-secondary" onclick="downloadLayers()">Layers Speichern</button>
+                    </section>
                 </section>
             </aside>
 
@@ -64,26 +87,12 @@
                         <button class="btn-secondary" onclick="deleteLayer()">Löschen</button>
                         <button class="btn-secondary" onclick="copyLayer()">Kopieren</button>
                     </div>
-                </section>
 
-                <section class="other-controls">
-                    <h3>Weitere Einstellungen</h3>
-
-                    <label for="segments">
-                        Anzahl der Segmente:
-                        <span class="slider-value" id="segmentValue">12</span>
-                    </label>
-                    <input type="range" id="segments" min="8" max="24" value="12" step="2">
-
-                    <label for="showGuides" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-                        <input type="checkbox" id="showGuides" checked>
-                        Hilfslinien anzeigen
+                    <label for="showOnlySelected" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                        <input type="checkbox" id="showOnlySelected">
+                        Nur ausgewählte Ebene anzeigen
                     </label>
 
-                    <label for="bgColorPicker" style="margin-top: 8px; display: flex; align-items: center; gap:8px;">
-                        Hintergrundfarbe:
-                        <input type="color" id="bgColorPicker" value="#ffffff" />
-                    </label>
                 </section>
             </aside>
         </div>
