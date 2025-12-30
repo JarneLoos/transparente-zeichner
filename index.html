@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transparente Zeichner</title>
+    <title>Transparent Drawer</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
         <!--<h1>🎨 Transparente Zeichner</h1>-->
 
         <div class="app-grid">
-            <!-- Linke Sidebar: Undo/Redo + Save + Tools & Pinselgröße -->
+            <!-- Left Sidebar: Undo/Redo + Save + Tools & Brush size -->
             <aside class="sidebar-left">
                 <section class="left-top-buttons">
                     <button class="btn-secondary" onclick="undo()">≪ Undo</button>
@@ -19,82 +19,83 @@
                 </section>
 
                 <section class="tool-block">
-                    <h3>Werkzeuge</h3>
+                    <h3>Tools</h3>
                     <div class="tools-grid">
-                        <button class="btn-secondary" id="toolBrush" onclick="setTool('brush')" style="background: var(--color-primary); color: white;">✏️ Stift</button>
-                        <button class="btn-secondary" id="toolEraser" onclick="setTool('eraser')">🧽 Radierer</button>
-                        <button class="btn-secondary" id="toolBucket" onclick="setTool('bucket')">🪣 Füllen</button>
-                        <button class="btn-secondary" id="toolLine" onclick="setTool('line')">📏 Linie</button>
-                        <button class="btn-secondary" id="toolCircle" onclick="setTool('circle')">⭕ Kreis</button>
-                        <button class="btn-secondary" id="toolRectangle" onclick="setTool('rectangle')">▭ Rechteck</button>
+                        <button class="btn-secondary" id="toolEraser" onclick="setTool('eraser')" style="background: var(--color-primary); color: white;">✂️ Cut</button>
+                        <button class="btn-secondary" id="toolBrush" onclick="setTool('brush')">✏️ Paint</button>
+                        <button class="btn-secondary" id="toolBucket" onclick="setTool('bucket')">🪣 Fill</button>
+                        <button class="btn-secondary" id="toolLine" onclick="setTool('line')">📏 Line</button>
+                        <!--<button class="btn-secondary" id="toolCircle" onclick="setTool('circle')">⭕ Circle</button>
+                        <button class="btn-secondary" id="toolRectangle" onclick="setTool('rectangle')">▭ Rectangle</button>-->
                     </div>
                 </section>
 
                 <section class="control-block">
                     <label for="brushSize">
-                        Pinselgröße:
+                        Brush size:
                         <span class="slider-value" id="brushValue">5</span>
                     </label>
                     <input type="range" id="brushSize" min="2" max="100" value="5">
                 </section>
-
-                <section class="other-controls">
-                    <h3>Weitere Einstellungen</h3>
-
-                    <label for="segments">
-                        Anzahl der Segmente:
-                        <span class="slider-value" id="segmentValue">12</span>
-                    </label>
-                    <input type="range" id="segments" min="8" max="24" value="12" step="2">
-
-                    <label for="showGuides" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-                        <input type="checkbox" id="showGuides" checked>
-                        Hilfslinien anzeigen
-                    </label>
-
-                    <label for="bgColorPicker" style="margin-top: 8px; display: flex; align-items: center; gap:8px;">
-                        Hintergrundfarbe:
-                        <input type="color" id="bgColorPicker" value="#ffffff" />
-                    </label>
-
-                    <section class="left-top-buttons">
-                        <button class="btn-secondary" onclick="downloadImage()">Bild Speichern</button>
-                        <button class="btn-secondary" onclick="downloadLayers()">Layers Speichern</button>
-                    </section>
-                </section>
             </aside>
 
-            <!-- Mittlere Spalte: großes, zentriertes Canvas -->
+            <!-- Middle column: large centered Canvas -->
             <main class="canvas-col">
                 <div id="canvasViewport">
                     <canvas id="drawingCanvas" width="1200" height="1200"></canvas>
                 </div>
             </main>
 
-            <!-- Rechte Sidebar: Preview oben, Layers + Funktionen darunter -->
+            <!-- Right Sidebar: Preview on top, Layers + actions below -->
             <aside class="sidebar-right">
                 <section class="preview-block">
                     <canvas id="previewCanvas" width="300" height="300"></canvas>
                 </section>
 
                 <section class="layers-block">
-                    <h3>Ebenen</h3>
+                    <h3>Layers</h3>
                     <div class="layers-panel" id="layersPanel"></div>
 
                     <div class="layer-actions" style="display: flex; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
-                        <button class="btn-secondary" onclick="addLayer()">Neu</button>
-                        <button class="btn-secondary" onclick="clearDrawing()">Leeren</button>
-                        <button class="btn-secondary" onclick="deleteLayer()">Löschen</button>
-                        <button class="btn-secondary" onclick="copyLayer()">Kopieren</button>
+                        <button class="btn-secondary" onclick="addLayer()">New</button>
+                        <button class="btn-secondary" onclick="clearDrawing()">Clear</button>
+                        <button class="btn-secondary" onclick="deleteLayer()">Delete</button>
+                        <button class="btn-secondary" onclick="copyLayer()">Copy</button>
                     </div>
 
                     <label for="showOnlySelected" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
                         <input type="checkbox" id="showOnlySelected">
-                        Nur ausgewählte Ebene anzeigen
+                        Show only selected layer
                     </label>
-
                 </section>
             </aside>
+
+            <!-- Separate Panel: More Settings (on desktop shown under left sidebar, on mobile at the bottom) -->
+            <aside class="other-controls-panel">
+                <h3>More settings</h3>
+
+                <label for="segments">
+                    Number of segments:
+                    <span class="slider-value" id="segmentValue">12</span>
+                </label>
+                <input type="range" id="segments" min="8" max="24" value="12" step="2">
+
+                <label for="showGuides" style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+                    <input type="checkbox" id="showGuides" checked>
+                    Show guides
+                </label>
+
+                <label for="bgColorPicker" style="margin-top: 8px; display: flex; align-items: center; gap:8px;">
+                    Background color:
+                    <input type="color" id="bgColorPicker" value="#ffffff" />
+                </label>
+
+                <section class="left-top-buttons">
+                    <button class="btn-secondary" onclick="downloadImage()">Save image</button>
+                    <button class="btn-secondary" onclick="downloadLayers()">Save layers</button>
+                </section>
+            </aside>
+
         </div>
     </div>
 

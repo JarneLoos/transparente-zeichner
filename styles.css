@@ -361,4 +361,45 @@ button {
     .preview-block #previewCanvas {
         max-width: 330px;
     }
+
+    /* Place 'other-controls-panel' at the very bottom in mobile */
+    .other-controls-panel {
+        order: 4;
+        margin-top: 12px;
+        background: var(--color-surface);
+        padding: 16px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+}
+
+/* Desktop / tablet: show other-controls next to left column under the tools */
+@media (min-width: 981px) {
+    /* create two rows so the other-controls-panel can sit under the left column */
+    .app-grid {
+        grid-template-columns: 220px 1fr 330px;
+        grid-template-rows: auto auto;
+        gap: 28px;
+        align-items: start;
+    }
+
+    /* ensure the main three columns stay in the first row */
+    .sidebar-left,
+    .canvas-col,
+    .sidebar-right {
+        grid-row: 1;
+    }
+
+    /* place the other-controls panel directly under the left column */
+    .other-controls-panel {
+        grid-column: 1 / 2;
+        grid-row: 2;
+        background: var(--color-surface);
+        padding: 16px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        max-width: 220px;
+        justify-self: start;
+        margin-top: 0;
+    }
 }

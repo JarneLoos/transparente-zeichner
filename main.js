@@ -28,7 +28,7 @@ let panOriginOffsetY = 0;
 let isDrawing = false;
 let lastX = 0;
 let lastY = 0;
-let currentTool = 'brush';
+let currentTool = 'eraser';
 let startX = 0;
 let startY = 0;
 let previewImageData = null;
@@ -39,22 +39,22 @@ let showGuides = true;
 let isPinching = false;
 let pinchData = null; // { startDist, initialScale, panOriginOffsetX, panOriginOffsetY, startCenterClientX, startCenterClientY }
 
-// Ebenen-Verwaltung
+// Layers management
 let layers = [];
 let currentLayerIndex = 0;
 
-// Segment positioning / size factor (Segment etwas kleiner und zentriert)
+// Segment positioning / size factor (Segment slightly smaller and centered)
 let segOffX = -200;
 let segOffY = 500;
 const SEGMENT_RADIUS_FACTOR = 1.75;
 
-// Popup / Einstellungen: wiederverwendbares Element
+// Popup / settings: reusable element
 let __layerSettingsPopup = null;
 let __layerSettingsOutsideListener = null;
 
-// Farben für automatische Layer-Farbfolge (Start bei Gelb, dann rückwärts im Farbkreis)
-const LAYER_HUE_START = 60; // Gelb
-const LAYER_HUE_STEP = 15;  // Schrittgröße (negative Richtung wird intern berechnet)
+// Colors for automatic layer color sequence (start at yellow)
+const LAYER_HUE_START = 60; // yellow
+const LAYER_HUE_STEP = 15;
 
 let showOnlySelected = false;
 
@@ -74,7 +74,7 @@ class Layer {
 // --- Transform helpers ---
 drawingCanvas.style.transformOrigin = '0 0';
 
-// Passt #canvasViewport so an, dass es in das Browserfenster passt
+// Adjust #canvasViewport so it fits into the browser window
 function adjustCanvasViewportSize() {
     const viewport = document.getElementById('canvasViewport');
     if (!viewport) return;
@@ -82,24 +82,23 @@ function adjustCanvasViewportSize() {
     const left = document.querySelector('.sidebar-left');
     const right = document.querySelector('.sidebar-right');
 
-    // Wenn wir auf schmalen Bildschirmen sind (CSS @media max-width:980px),
-    // liegen Sidebars unter dem Canvas — ihre Breiten dürfen nicht abgezogen werden.
+    // On narrow screens (CSS @media max-width:980px) sidebars are below the canvas
     const isMobile = window.matchMedia('(max-width: 980px)').matches;
 
     const leftW = (!isMobile && left) ? left.getBoundingClientRect().width : 0;
     const rightW = (!isMobile && right) ? right.getBoundingClientRect().width : 0;
 
-    // Body/container padding (20px links + 20px rechts)
+    // Body/container padding (20px left + 20px right)
     const horizPadding = 50;
 
-    // verfügbare Breite für die mittlere Spalte (CSS-Pixel)
+    // available width for center column (CSS px)
     const availableWidth = Math.max(120, window.innerWidth - leftW - rightW - horizPadding);
 
-    // verfügbare Höhe ab der Oberkante des Viewports bis zum unteren Fensterrand
+    // available height from viewport top to bottom
     const rect = viewport.getBoundingClientRect();
     const availableHeight = Math.max(120, window.innerHeight - Math.max(0, rect.top) + 20);
 
-    // Quadratische Viewport-Größe: so groß wie möglich, aber kleiner als beides.
+    // Square viewport size: as large as possible but smaller than both
     const size = Math.floor(Math.min(availableWidth, availableHeight) * 0.95);
 
     viewport.style.width = size + 'px';
@@ -128,10 +127,6 @@ function resizeDrawingCanvas() {
     const oldH = drawingCanvas.height;
 
     // --- Keep segment offset proportional to canvas size ---
-    // segOffX / segOffY are stored in canvas-internal pixels. When the
-    // internal buffer size changes (e.g. on window resize or different DPR)
-    // we must scale these offsets so the segment remains at the same
-    // relative position.
     if (oldW && oldH) {
         const scaleX = pixelW / oldW;
         const scaleY = pixelH / oldH;
@@ -145,7 +140,7 @@ function resizeDrawingCanvas() {
     drawingCanvas.style.width = displayW + 'px';
     drawingCanvas.style.height = displayH + 'px';
 
-    // re-acquire context (ctx wurde zu let geändert)
+    // re-acquire context
     ctx = drawingCanvas.getContext('2d');
 
     // Resample each layer to new size (preserve content)
@@ -155,36 +150,28 @@ function resizeDrawingCanvas() {
         tmp.height = oldH || 1;
         const tmpCtx = tmp.getContext('2d');
 
-        // draw previous content (if any)
         tmpCtx.clearRect(0, 0, tmp.width, tmp.height);
         tmpCtx.drawImage(layer.canvas, 0, 0, tmp.width, tmp.height);
 
-        // set new size for layer canvas
         layer.canvas.width = pixelW;
         layer.canvas.height = pixelH;
 
-        // draw scaled content back to layer
         layer.ctx = layer.canvas.getContext('2d');
         layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
         layer.ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, 0, 0, layer.canvas.width, layer.canvas.height);
     });
 
-    // adjust transform origin/cursor etc.
     drawingCanvas.style.transformOrigin = '0 0';
     updateTransformStyle();
 
-    // re-create preview buffer if needed
     ensurePreviewBuffer();
 
-    // redraw
     renderDrawingCanvas();
     updatePreview();
 }
 
 function updateTransformStyle() {
-    // apply CSS transform: translate(px, px) scale(s)
     drawingCanvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
-    // show appropriate cursor
     if (isPanning) {
         drawingCanvas.style.cursor = 'grabbing';
     } else {
@@ -195,7 +182,7 @@ function updateTransformStyle() {
 function screenToCanvasCoords(clientX, clientY) {
     const rect = drawingCanvas.getBoundingClientRect();
 
-    // CSS-Pixel → Canvas-Pixel
+    // CSS px -> canvas internal px
     const scaleX = drawingCanvas.width / rect.width;
     const scaleY = drawingCanvas.height / rect.height;
 
@@ -224,12 +211,11 @@ function ensurePreviewBuffer() {
         previewCanvas.style.width = displayW + 'px';
         previewCanvas.style.height = displayH + 'px';
         previewCtx = previewCanvas.getContext('2d');
-        // scale drawing operations so we can use CSS/display pixels in drawing code
         previewCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 }
 
-// UpdatePreview: berechnet Segment-Koordinaten in Preview-Display-Pixeln und zentriert das Drawing-Canvas korrekt
+// UpdatePreview: computes segment metrics in preview display pixels and centers main canvas
 function updatePreview() {
     if (!previewCanvas) return;
     ensurePreviewBuffer();
@@ -239,28 +225,23 @@ function updatePreview() {
     const displayW = previewCanvas.width / dpr;
     const displayH = previewCanvas.height / dpr;
 
-    const info = getSegmentInfo(); // liefert cx,cy,radius,segments,anglePerSegment,startAngle in canvas-internen Pixeln
+    const info = getSegmentInfo();
     if (!info) return;
 
-    // Basis: zeichne das gesamte drawingCanvas in die Preview-Full-Size
     const fullDestW = displayW;
     const fullDestH = displayH;
-    const baseScale = fullDestW / drawingCanvas.width; // source -> dest scale wenn dest==full preview
+    const baseScale = fullDestW / drawingCanvas.width;
 
-    // Disp-Radius bei dieser Basis-Skalierung
     let dispRadius = info.radius * baseScale;
 
-    // Maximal erlaubter Radius in Preview (leicht margin)
     const maxAllowedRadius = Math.min(displayW, displayH) / 2 * 0.98;
 
-    // Falls dispRadius zu groß ist, skaliere das gezeichnete Bild runter, damit Segment passt
     const fitScale = dispRadius > 0 ? Math.min(1, maxAllowedRadius / dispRadius) : 1;
 
     const destW = fullDestW * fitScale;
     const destH = fullDestH * fitScale;
-    const scale = destW / drawingCanvas.width; // endgültige source->dest Skalierung
+    const scale = destW / drawingCanvas.width;
 
-    // Ziel-Offset so dass info.cx/info.cy in der Preview mittig stehen
     const centerX = displayW / 2;
     const centerY = displayH / 2;
     const dx = centerX - info.cx * scale;
@@ -270,17 +251,14 @@ function updatePreview() {
     const anglePerSegment = info.anglePerSegment;
     const startAngle = info.startAngle;
 
-    // Clear + Hintergrund
     previewCtx.save();
     previewCtx.clearRect(0, 0, displayW, displayH);
     previewCtx.fillStyle = canvasBgColor;
     previewCtx.fillRect(0, 0, displayW, displayH);
 
-    // Zeichne pro Segment (Kaleidoskop), Clip im Preview in Display-Pixeln
     for (let i = 0; i < info.segments; i++) {
         previewCtx.save();
 
-        // Rotation / Spiegelung pro Segment
         previewCtx.translate(centerX, centerY);
         previewCtx.rotate(anglePerSegment * i);
 
@@ -292,7 +270,6 @@ function updatePreview() {
 
         previewCtx.translate(-centerX, -centerY);
 
-        // Clip-Pfad (im Preview-Coordinate-Space)
         previewCtx.beginPath();
         previewCtx.moveTo(centerX, centerY);
         previewCtx.lineTo(
@@ -303,11 +280,10 @@ function updatePreview() {
         previewCtx.closePath();
         previewCtx.clip();
 
-        // Zeichne das drawingCanvas so, dass info.cx/info.cy im Preview-Mittelpunkt liegt
         previewCtx.drawImage(
             drawingCanvas,
-            0, 0, drawingCanvas.width, drawingCanvas.height, // source
-            dx, dy, destW, destH                              // destination (display pixels)
+            0, 0, drawingCanvas.width, drawingCanvas.height,
+            dx, dy, destW, destH
         );
 
         previewCtx.restore();
@@ -316,22 +292,17 @@ function updatePreview() {
     previewCtx.restore();
 }
 
-// Zeichnet das zusammengesetzte drawingCanvas aus den Layer-Canvases
+// Draw composed drawing canvas from layer canvases
 function renderDrawingCanvas() {
-    // Zeichen-Puffer bereinigen und Hintergrund füllen
     ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
     ctx.fillStyle = typeof canvasBgColor !== 'undefined' ? canvasBgColor : '#ffffff';
     ctx.fillRect(0, 0, drawingCanvas.width, drawingCanvas.height);
 
-    // Layers zeichnen — nutze showOnlySelected Flag
     for (let i = 0; i < layers.length; i++) {
         const layer = layers[i];
 
-        // Wenn "Nur ausgewählte Ebene" aktiv: nur die aktuelle Ebene rendern
         if (showOnlySelected) {
-            if (i !== currentLayerIndex) {
-                continue;
-            }
+            if (i !== currentLayerIndex) continue;
         } else if (!layer.visible) {
             continue;
         }
@@ -341,11 +312,10 @@ function renderDrawingCanvas() {
     }
     ctx.globalAlpha = 1;
 
-    // Segment-Guides überlagern
     drawSegmentGuideOverlay();
 }
 
-// Zeichnet die Guideline / Segment-Kontur (in canvas-internen Pixeln)
+// Draw the segment guide overlay
 function drawSegmentGuideOverlay() {
     const info = getSegmentInfo();
 
@@ -354,7 +324,6 @@ function drawSegmentGuideOverlay() {
     ctx.lineWidth = Math.max(1, Math.round(2 * (window.devicePixelRatio || 1)));
 
     if (showGuides) {
-        // zwei Radial-Linien
         ctx.beginPath();
         ctx.moveTo(info.cx, info.cy);
         ctx.lineTo(
@@ -372,7 +341,6 @@ function drawSegmentGuideOverlay() {
         ctx.stroke();
     }
 
-    // Bogen
     ctx.beginPath();
     ctx.arc(info.cx, info.cy, info.radius, info.startAngle, info.startAngle + info.anglePerSegment);
     ctx.stroke();
@@ -380,17 +348,15 @@ function drawSegmentGuideOverlay() {
     ctx.restore();
 }
 
-// Ebenen-Funktionen
+// Layers functions
 function addLayer(name = null) {
-    if (!name) name = `Ebene ${layers.length + 1}`;
+    if (!name) name = `Layer ${layers.length + 1}`;
     const layer = new Layer(name);
 
-    // berechne Hue: starte bei LAYER_HUE_START und gehe rückwärts im Farbkreis
     const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
     const hslColor = `hsl(${hue}, 70%, 50%)`;
     layer.color = hslToHex(hslColor);
 
-    // Fülle nur das Segment auf der neuen Ebene mit der Layer-Farbe
     layer.ctx.save();
     applySegmentClip(layer.ctx);
     layer.ctx.fillStyle = layer.color;
@@ -406,7 +372,7 @@ function addLayer(name = null) {
 
 function deleteLayer() {
     if (layers.length <= 1) {
-        alert('Du musst mindestens eine Ebene haben!');
+        alert('You must have at least one layer!');
         return;
     }
     layers.splice(currentLayerIndex, 1);
@@ -419,20 +385,16 @@ function deleteLayer() {
 function copyLayer() {
     if (!layers || layers.length === 0) return;
 
-    // Zustand sichern für Undo
     saveState();
 
     const src = layers[currentLayerIndex];
 
-    // Basisname: entferne vorhandene " (n)"-Suffixe, falls vorhanden
     const baseName = src.name.replace(/\s*\(\d+\)\s*$/, '').trim();
 
-    // Hilfsfunktion für Regex-Escaping
     function escapeRegex(s) {
-        return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return s.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
     }
 
-    // Finde maximalen Index bestehender Kopien: "BaseName (n)"
     const baseEsc = escapeRegex(baseName);
     const re = new RegExp('^' + baseEsc + '\\s*\\((\\d+)\\)$');
     let maxIndex = 0;
@@ -447,17 +409,14 @@ function copyLayer() {
     const nextIndex = maxIndex + 1;
     const copyName = `${baseName} (${nextIndex})`;
 
-    // Erstelle neue Layer-Instanz (gleiche Pixelgröße wie drawingCanvas)
     const newLayer = new Layer(copyName);
     newLayer.opacity = src.opacity;
     newLayer.visible = src.visible;
 
-    // Berechne automatische Farbe analog zu addLayer (Start-Hue + Schritt)
     const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
     const hslColor = `hsl(${hue}, 70%, 50%)`;
     newLayer.color = hslToHex(hslColor);
 
-    // Kopiere Pixelinhalt vom Quell-Layer
     newLayer.ctx.clearRect(0, 0, newLayer.canvas.width, newLayer.canvas.height);
     newLayer.ctx.drawImage(
         src.canvas,
@@ -465,8 +424,6 @@ function copyLayer() {
         0, 0, newLayer.canvas.width, newLayer.canvas.height
     );
 
-    // Recolor: setze alle nicht-transparenten Pixel auf die neue Layer-Farbe,
-    // damit die Kopie farblich der automatischen Folge folgt
     try {
         const w = newLayer.canvas.width;
         const h = newLayer.canvas.height;
@@ -482,17 +439,13 @@ function copyLayer() {
                 data[i] = rNew;
                 data[i + 1] = gNew;
                 data[i + 2] = bNew;
-                // alpha bleibt erhalten
             }
         }
         newLayer.ctx.putImageData(imageData, 0, 0);
     } catch (err) {
-        // In sehr restriktiven Umgebungen könnte getImageData fehlschlagen;
-        // Fallback: nichts recolorn, color bleibt gesetzt.
         console.warn('Recolor failed for copied layer:', err);
     }
 
-    // Füge über der aktuellen Ebene ein (höherer Index = weiter oben)
     const insertIndex = currentLayerIndex + 1;
     layers.splice(insertIndex, 0, newLayer);
     currentLayerIndex = insertIndex;
@@ -517,7 +470,6 @@ function updateLayersPanel() {
         layerItem.style.gap = '8px';
         layerItem.style.padding = '6px';
 
-        // 1) Große Checkbox (sichtbarkeit) links
         const visWrapper = document.createElement('div');
         visWrapper.className = 'layer-vis-wrapper';
         const visibilityCheckbox = document.createElement('input');
@@ -533,12 +485,11 @@ function updateLayersPanel() {
         visWrapper.appendChild(visibilityCheckbox);
         layerItem.appendChild(visWrapper);
 
-        // 2) Kleine Farbauswahl
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
         colorInput.className = 'layer-color';
         colorInput.value = layer.color;
-        colorInput.title = 'Farbe ändern';
+        colorInput.title = 'Change color';
         colorInput.addEventListener('change', (e) => {
             e.stopPropagation();
             setLayerColor(i, colorInput.value);
@@ -547,7 +498,6 @@ function updateLayersPanel() {
         colorInput.addEventListener('mousedown', e => e.stopPropagation());
         layerItem.appendChild(colorInput);
 
-        // 3) Titel (zentral, klick zum auswählen)
         const title = document.createElement('div');
         title.className = 'layer-title';
         title.textContent = layer.name;
@@ -559,19 +509,17 @@ function updateLayersPanel() {
         });
         layerItem.appendChild(title);
 
-        // 4) Zahnrad für Layer-Einstellungen (öffnet Popup)
         const gearBtn = document.createElement('button');
         gearBtn.type = 'button';
         gearBtn.className = 'layer-gear';
         gearBtn.innerHTML = '⚙';
-        gearBtn.title = 'Einstellungen';
+        gearBtn.title = 'Settings';
         gearBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openLayerSettings(i, gearBtn);
         });
         layerItem.appendChild(gearBtn);
 
-        // 5) Drag Handle rechts (unverändert)
         const dragHandle = document.createElement('div');
         dragHandle.className = 'layer-drag-handle';
         dragHandle.textContent = '⋮⋮';
@@ -589,7 +537,6 @@ function updateLayersPanel() {
             );
         });
 
-        // Drop/drag events auf item
         layerItem.addEventListener('dragover', ev => {
             ev.preventDefault();
             layerItem.classList.add('drag-over');
@@ -699,23 +646,22 @@ function openLayerSettings(index, anchorEl) {
     const layer = layers[index];
     if (!layer) return;
 
-    // Erstelle Popup einmalig
+    // Create popup
     __layerSettingsPopup = document.createElement('div');
     __layerSettingsPopup.className = 'layer-settings-popup';
     __layerSettingsPopup.innerHTML = `
         <label class="ls-row"><span>Title</span><input type="text" class="ls-title" value="${escapeHtml(layer.name)}" /></label>
         <label class="ls-row"><span>Opacity</span><input type="range" class="ls-opacity" min="0" max="100" value="${Math.round(layer.opacity * 100)}" /></label>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-            <button type="button" class="btn-secondary ls-close">Schließen</button>
+            <button type="button" class="btn-secondary ls-close">Close</button>
         </div>
     `;
 
     document.body.appendChild(__layerSettingsPopup);
 
-    // Positioniere Popup nahe dem Anchor
+    // Position popup near anchor
     const aRect = anchorEl.getBoundingClientRect();
     const popupRect = __layerSettingsPopup.getBoundingClientRect();
-    // prefer on the right; fall back above if nicht platz
     let left = Math.min(window.innerWidth - popupRect.width - 8, aRect.right + 8);
     if (left < 8) left = 8;
     let top = aRect.top;
@@ -725,14 +671,12 @@ function openLayerSettings(index, anchorEl) {
     __layerSettingsPopup.style.left = `${left}px`;
     __layerSettingsPopup.style.top = `${top}px`;
 
-    // Event handlers
     const titleInput = __layerSettingsPopup.querySelector('.ls-title');
     const opacityInput = __layerSettingsPopup.querySelector('.ls-opacity');
     const closeBtn = __layerSettingsPopup.querySelector('.ls-close');
 
     titleInput.addEventListener('input', (e) => {
         layer.name = e.target.value;
-        // Aktualisiere nur den Titel-Text im Panel, ohne komplettes Rebuild
         const panel = document.getElementById('layersPanel');
         const titleElems = panel.querySelectorAll('.layer-item');
         titleElems.forEach(item => {
@@ -753,7 +697,6 @@ function openLayerSettings(index, anchorEl) {
         closeLayerSettings();
     });
 
-    // Klick außerhalb schließt Popup
     __layerSettingsOutsideListener = (ev) => {
         if (!__layerSettingsPopup) return;
         if (!__layerSettingsPopup.contains(ev.target) && ev.target !== anchorEl) {
@@ -812,19 +755,16 @@ function redo() {
     restoreState(nextState);
 }
 
-// Liefert Segment-Metriken in Canvas-internen Pixeln (einheitlich verwenden)
 function getSegmentInfo() {
     const segments = Math.max(1, parseInt(segmentsInput?.value || '12', 10));
     const cx = drawingCanvas.width / 2 + (segOffX || 0);
     const cy = drawingCanvas.height / 2 + (segOffY || 0);
-    // radius = halber kleinerer Canvas-Durchmesser * factor
     const radius = Math.min(drawingCanvas.width, drawingCanvas.height) * 0.5 * SEGMENT_RADIUS_FACTOR;
     const anglePerSegment = (Math.PI * 2) / segments;
     const startAngle = -Math.PI / 2;
     return { segments, cx, cy, radius, anglePerSegment, startAngle };
 }
 
-// Apply clipping for the active segment — expects ctx in canvas internal pixels
 function applySegmentClip(ctx) {
     const info = getSegmentInfo();
     ctx.beginPath();
@@ -838,7 +778,6 @@ function applySegmentClip(ctx) {
     ctx.clip();
 }
 
-// Prüft, ob ein Punkt (in canvas-internen Pixeln) innerhalb des Segments liegt
 function isPointInSegment(x, y) {
     const info = getSegmentInfo();
     const dx = x - info.cx;
@@ -846,7 +785,6 @@ function isPointInSegment(x, y) {
     const dist = Math.hypot(dx, dy);
     if (dist > info.radius) return false;
 
-    // Winkel relativ zum Startwinkel normalisiert auf [0, 2PI)
     let angle = Math.atan2(dy, dx);
     let rel = angle - info.startAngle;
     while (rel < 0) rel += Math.PI * 2;
@@ -856,7 +794,7 @@ function isPointInSegment(x, y) {
 }
 
 function hslToHex(hsl) {
-    const hslRegex = /hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/i;
+    const hslRegex = /hsl\((\d+),\s*(\d+)%\,\s*(\d+)%\)/i;
     const match = hsl.match(hslRegex);
     if (!match) return '#2d7a8f';
     const h = parseInt(match[1]) / 360;
@@ -886,17 +824,15 @@ function hslToHex(hsl) {
 
 function clampPan() {
     const viewport = document.getElementById('canvasViewport');
-    const viewW = viewport.clientWidth;   // CSS-Pixel
-    const viewH = viewport.clientHeight;  // CSS-Pixel
+    const viewW = viewport.clientWidth;
+    const viewH = viewport.clientHeight;
 
-    // Verwende sichtbare Größe (CSS-Pixel) des Canvas, nicht internal pixel buffer
     const canvasRect = drawingCanvas.getBoundingClientRect();
-    const canvasW = canvasRect.width * scale;  // CSS-Pixel * scale
-    const canvasH = canvasRect.height * scale; // CSS-Pixel * scale
+    const canvasW = canvasRect.width * scale;
+    const canvasH = canvasRect.height * scale;
 
-    const TOLERANCE = 200; // Gummirand in CSS-Pixeln
+    const TOLERANCE = 200;
 
-    // Horizontal
     if (canvasW <= viewW) {
         offsetX = (viewW - canvasW) / 2;
     } else {
@@ -905,7 +841,6 @@ function clampPan() {
         offsetX = softClamp(offsetX, minX, maxX, TOLERANCE);
     }
 
-    // Vertikal
     if (canvasH <= viewH) {
         offsetY = (viewH - canvasH) / 2;
     } else {
@@ -931,7 +866,7 @@ function softClamp(value, min, max, tolerance) {
     return value;
 }
 
-// --- Zeichnen: Event-Handler (jetzt mit transform-aware Koordinaten) ---
+// --- Drawing event handlers ---
 drawingCanvas.addEventListener('mousedown', (e) => {
     // Middle mouse -> start panning
     if (e.button === 1) {
@@ -1277,22 +1212,21 @@ document.addEventListener('keydown', e => {
 // --- Background color control for both canvases ---
 const bgColorPicker = document.getElementById('bgColorPicker');
 
-// initialer Wert (aus Picker)
+// initial value (from picker)
 let canvasBgColor = bgColorPicker.value;
 
-// setze die CSS-Hintergründe sofort (sichtbar ohne Neuzeichnen)
+// set CSS backgrounds
 drawingCanvas.style.backgroundColor = canvasBgColor;
 previewCanvas.style.backgroundColor = canvasBgColor;
 
-// Event: live update wenn Farbe gewechselt wird
+// Event: live update when color changes
 bgColorPicker.addEventListener('input', () => {
     canvasBgColor = bgColorPicker.value;
     drawingCanvas.style.backgroundColor = canvasBgColor;
     previewCanvas.style.backgroundColor = canvasBgColor;
 
-    // Wenn du beim Clear explizit mit Farbe füllst, neu rendern:
-    renderDrawingCanvas(); // deine Funktion, die das drawing-Canvas neu zeichnet
-    updatePreview();       // deine Preview-Update-Funktion
+    renderDrawingCanvas();
+    updatePreview();
 });
 
 const showGuidesInput = document.getElementById('showGuides');
@@ -1383,7 +1317,7 @@ function clearDrawing() {
 
 function downloadImage() {
     const link = document.createElement('a');
-    link.download = 'kaleidoskop.png';
+    link.download = 'kaleidoscope.png';
     link.href = previewCanvas.toDataURL();
     link.click();
 }
@@ -1460,12 +1394,47 @@ function initializeCanvases() {
     resizeDrawingCanvas();
 
     layers = [];
-    addLayer('Ebene 1');
+    addLayer('Layer 1');
     currentLayerIndex = 0;
     updateLayersPanel();
     renderDrawingCanvas();
     updatePreview();
     updateTransformStyle();
+
+    // Positioniere das 'Weitere Einstellungen' Panel an der richtigen Stelle
+    syncOtherControlsPanel();
+}
+
+// Verschiebe das "other-controls-panel" ins linke Sidebar- bzw. zurück ans Ende des Grid für Mobile. Dadurch erscheint es direkt unter
+// den Pinsel-Tools in Querformat und ganz unten im Hochformat.
+function syncOtherControlsPanel() {
+    const panel = document.querySelector('.other-controls-panel');
+    const sidebarLeft = document.querySelector('.sidebar-left');
+    const appGrid = document.querySelector('.app-grid');
+    if (!panel || !sidebarLeft || !appGrid) return;
+
+    const isMobile = window.matchMedia('(max-width: 980px)').matches;
+
+    if (isMobile) {
+        // mobile: sollte ganz unten im Grid stehen
+        if (panel.parentElement !== appGrid) {
+            appGrid.appendChild(panel);
+        }
+        panel.style.maxWidth = '';
+        panel.style.width = '';
+        panel.style.position = '';
+        panel.style.marginTop = '12px';
+    } else {
+        // desktop: direkt unterhalb der linken Sidebar-Tools
+        if (panel.parentElement !== sidebarLeft) {
+            sidebarLeft.appendChild(panel);
+        }
+        // stelle sicher, dass es optisch zur Sidebar passt
+        panel.style.maxWidth = '100%';
+        panel.style.width = '';
+        panel.style.position = '';
+        panel.style.marginTop = '12px';
+    }
 }
 
 // ensure canvas resizes with window
@@ -1474,8 +1443,18 @@ window.addEventListener('resize', () => {
     window.__resizeTimeoutPreview = setTimeout(() => {
         adjustCanvasViewportSize();
         resizeDrawingCanvas();
+        // reposition the other-controls panel after layout changes
+        syncOtherControlsPanel();
     }, 120);
 });
+
+// also react to orientation changes / media query changes
+const mq = window.matchMedia('(max-width: 980px)');
+if (mq.addEventListener) {
+    mq.addEventListener('change', () => syncOtherControlsPanel());
+} else if (mq.addListener) {
+    mq.addListener(() => syncOtherControlsPanel());
+}
 
 // Exponierte Funktionen (für onclicks)
 window.addLayer = addLayer;
