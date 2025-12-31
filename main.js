@@ -14,7 +14,7 @@ const MAX_HISTORY = 50;
 // View transform (Zoom / Pan)
 let scale = 1;
 const MIN_SCALE = 1;
-const MAX_SCALE = 4;
+const MAX_SCALE = 10;
 let offsetX = 0; // translation in CSS pixels
 let offsetY = 0;
 
@@ -168,8 +168,7 @@ function resizeDrawingCanvas() {
 
     ensurePreviewBuffer();
 
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function updateTransformStyle() {
@@ -252,7 +251,7 @@ function updatePreview() {
     const dispRadiusFinal = info.radius * scale;
     const anglePerSegment = info.anglePerSegment;
     const startAngle = info.startAngle;
-
+    
     previewCtx.save();
     previewCtx.clearRect(0, 0, displayW, displayH);
     previewCtx.fillStyle = canvasBgColor;
@@ -317,6 +316,19 @@ function renderDrawingCanvas() {
     drawSegmentGuideOverlay();
 }
 
+function updateCanvasAndPreview() {
+    if (showOnlySelected) {
+        showOnlySelected = false;
+        renderDrawingCanvas();
+        updatePreview();
+        showOnlySelected = true;
+        renderDrawingCanvas();
+    } else {
+        renderDrawingCanvas();
+        updatePreview();
+    }
+}
+
 // Draw the segment guide overlay
 function drawSegmentGuideOverlay() {
     const info = getSegmentInfo();
@@ -341,11 +353,11 @@ function drawSegmentGuideOverlay() {
             info.cy + info.radius * Math.sin(info.startAngle + info.anglePerSegment)
         );
         ctx.stroke();
-    }
 
-    ctx.beginPath();
-    ctx.arc(info.cx, info.cy, info.radius, info.startAngle, info.startAngle + info.anglePerSegment);
-    ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(info.cx, info.cy, info.radius, info.startAngle, info.startAngle + info.anglePerSegment);
+        ctx.stroke();
+    }
 
     ctx.restore();
 }
@@ -379,8 +391,7 @@ function addLayer(name = null, opacity = 0.5, visible = true, color = null, canv
     layers.push(layer);
     currentLayerIndex = layers.length - 1;
     updateLayersPanel();
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function deleteLayer() {
@@ -391,8 +402,7 @@ function deleteLayer() {
     layers.splice(currentLayerIndex, 1);
     if (currentLayerIndex >= layers.length) currentLayerIndex = layers.length - 1;
     updateLayersPanel();
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function copyLayer() {
@@ -464,8 +474,7 @@ function copyLayer() {
     currentLayerIndex = insertIndex;
 
     updateLayersPanel();
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function updateLayersPanel() {
@@ -482,6 +491,10 @@ function updateLayersPanel() {
         layerItem.style.alignItems = 'center';
         layerItem.style.gap = '8px';
         layerItem.style.padding = '6px';
+        layerItem.addEventListener('click', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            selectLayer(i);
+        });
 
         const visWrapper = document.createElement('div');
         visWrapper.className = 'layer-vis-wrapper';
@@ -516,10 +529,6 @@ function updateLayersPanel() {
         title.textContent = layer.name;
         title.style.flex = '1';
         title.style.cursor = 'pointer';
-        title.addEventListener('click', (e) => {
-            if (e.target.tagName === 'INPUT') return;
-            selectLayer(i);
-        });
         layerItem.appendChild(title);
 
         const gearBtn = document.createElement('button');
@@ -579,34 +588,18 @@ function selectLayer(index) {
     currentLayerIndex = index;
     updateLayersPanel();
 
-    if (showOnlySelected) {
-        showOnlySelected = false;
-        renderDrawingCanvas();
-        updatePreview();
-        showOnlySelected = true;
-        renderDrawingCanvas();
-    }
+    updateCanvasAndPreview();
 }
 
 function setLayerOpacity(index, value) {
     layers[index].opacity = value / 100;
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function toggleLayerVisibility(index, visible) {
     layers[index].visible = visible;
 
-    if (showOnlySelected) {
-        showOnlySelected = false;
-        renderDrawingCanvas();
-        updatePreview();
-        showOnlySelected = true;
-        renderDrawingCanvas();
-    } else {
-        renderDrawingCanvas();
-        updatePreview();
-    }
+    updateCanvasAndPreview();
 }
 
 function getCurrentLayer() {
@@ -627,8 +620,7 @@ function moveLayer(fromIndex, toIndex) {
 
     saveState();
     updateLayersPanel();
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function setLayerColor(index, color) {
@@ -649,8 +641,7 @@ function setLayerColor(index, color) {
     }
 
     layer.ctx.putImageData(imageData, 0, 0);
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function openLayerSettings(index, anchorEl) {
@@ -748,8 +739,7 @@ function restoreState(snapshot) {
     snapshot.forEach((imageData, index) => {
         layers[index].ctx.putImageData(imageData, 0, 0);
     });
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function undo() {
@@ -961,8 +951,7 @@ window.addEventListener('mousemove', (e) => {
         lastY = y;
 
         layerCtx.restore();
-        renderDrawingCanvas();
-        updatePreview();
+        updateCanvasAndPreview();
     } else if (currentTool === 'line' || currentTool === 'circle' || currentTool === 'rectangle') {
         layerCtx.putImageData(previewImageData, 0, 0);
 
@@ -986,8 +975,7 @@ window.addEventListener('mousemove', (e) => {
         }
 
         layerCtx.restore();
-        renderDrawingCanvas();
-        updatePreview();
+        updateCanvasAndPreview();
     }
 });
 
@@ -1133,8 +1121,7 @@ drawingCanvas.addEventListener('touchmove', (e) => {
             lastY = y;
 
             layerCtx.restore();
-            renderDrawingCanvas();
-            updatePreview();
+            updateCanvasAndPreview();
         } else if (currentTool === 'line' || currentTool === 'circle' || currentTool === 'rectangle') {
             layerCtx.putImageData(previewImageData, 0, 0);
 
@@ -1158,8 +1145,7 @@ drawingCanvas.addEventListener('touchmove', (e) => {
             }
 
             layerCtx.restore();
-            renderDrawingCanvas();
-            updatePreview();
+            updateCanvasAndPreview();
         }
     }
 }, { passive: false });
@@ -1238,15 +1224,13 @@ bgColorPicker.addEventListener('input', () => {
     drawingCanvas.style.backgroundColor = canvasBgColor;
     previewCanvas.style.backgroundColor = canvasBgColor;
 
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 });
 
 const showGuidesInput = document.getElementById('showGuides');
 showGuidesInput.addEventListener('change', function () {
     showGuides = this.checked;
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 });
 
 const showOnlySelectedInput = document.getElementById('showOnlySelected');
@@ -1310,8 +1294,7 @@ function floodFill(x, y, fillColor) {
     }
 
     ctx.putImageData(imageData, 0, 0);
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 }
 
 function hexToRgb(hex) {
@@ -1323,9 +1306,13 @@ function clearDrawing() {
     saveState();
     const currentLayer = getCurrentLayer();
     const layerCtx = currentLayer.ctx;
-    layerCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-    renderDrawingCanvas();
-    updatePreview();
+    layerCtx.save();
+    applySegmentClip(layerCtx);
+    layerCtx.fillStyle = currentLayer.color;
+    layerCtx.fillRect(0, 0, currentLayer.canvas.width, currentLayer.canvas.height);
+    layerCtx.restore();
+
+    updateCanvasAndPreview();
 }
 
 function importProject() {
@@ -1339,7 +1326,6 @@ function importProject() {
             const text = await f.text();
             const project = JSON.parse(text);
             await loadProject(project);
-            alert('Projekt erfolgreich geladen.');
         } catch (err) {
             console.error(err);
             alert('Fehler beim Laden der Datei. Ist es eine gültige Projekt-JSON?');
@@ -1371,8 +1357,7 @@ async function loadProject(project) {
     }
 
     updateLayersPanel();
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
     updateTransformStyle();
 }
 
@@ -1416,7 +1401,7 @@ function openExportPopup() {
             <h3>Export</h3>
         </div>
         <div class="export-options" style="display: flex; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
-            <button class="btn-secondary" onclick="exportAsJSON()">Projekt as jason</button>
+            <button class="btn-secondary" onclick="exportAsJSON()">Project as json</button>
             <button class="btn-secondary" onclick="exportAsPNG()">Preview as png</button>
             <button class="btn-secondary" onclick="exportLayersAsPNG()">Layers as single png</button>
             <button class="btn-secondary" onclick="exportLayersAsPNGs()">Layers as multiple png</button>
@@ -1597,8 +1582,7 @@ function sanitizeFilename(name) {
 // Steuerungs-Handlers
 segmentsInput.addEventListener('input', (e) => {
     segmentValue.textContent = e.target.value;
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
 });
 
 brushSizeInput.addEventListener('input', (e) => {
@@ -1630,8 +1614,7 @@ function initializeCanvases() {
     addLayer('Layer 1');
     currentLayerIndex = 0;
     updateLayersPanel();
-    renderDrawingCanvas();
-    updatePreview();
+    updateCanvasAndPreview();
     updateTransformStyle();
 
     // Positioniere das 'Weitere Einstellungen' Panel an der richtigen Stelle
@@ -1670,6 +1653,39 @@ function syncOtherControlsPanel() {
     }
 }
 
+function syncUIStateFromDOM() {
+    // TOOL SIZE
+    const toolSizeSlider = document.getElementById('brushSize');
+    const toolSizeLabel = document.getElementById('brushValue');
+    if (toolSizeSlider && toolSizeLabel) {
+        const value = Number(toolSizeSlider.value);
+        toolSizeLabel.textContent = value;
+        currentToolSize = value;
+    }
+
+    // SEGMENTS
+    const segmentsSlider = document.getElementById('segments');
+    const segmentsLabel = document.getElementById('segmentValue');
+    if (segmentsSlider && segmentsLabel) {
+        const value = Number(segmentsSlider.value);
+        segmentsLabel.textContent = value;
+        currentSegments = value;
+    }
+
+    // CHECKBOXEN
+    const showGuidesCheckbox = document.getElementById('showGuides');
+    if (showGuidesCheckbox) {
+        showGuides = showGuidesCheckbox.checked;
+    }
+
+    const showOnlySelectedCheckbox = document.getElementById('showOnlySelected');
+    if (showOnlySelectedCheckbox) {
+        showOnlySelected = showOnlySelectedCheckbox.checked;
+    }
+
+    updateCanvasAndPreview();
+}
+
 // ensure canvas resizes with window
 window.addEventListener('resize', () => {
     clearTimeout(window.__resizeTimeoutPreview);
@@ -1679,6 +1695,15 @@ window.addEventListener('resize', () => {
         // reposition the other-controls panel after layout changes
         syncOtherControlsPanel();
     }, 120);
+});
+
+window.addEventListener('beforeunload', (event) => {
+    event.preventDefault();
+    event.returnValue = '';
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+    syncUIStateFromDOM();
 });
 
 // also react to orientation changes / media query changes
