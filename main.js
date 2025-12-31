@@ -60,6 +60,8 @@ const LAYER_HUE_STEP = 15;
 
 let showOnlySelected = false;
 
+let tempSegments = 0;
+
 class Layer {
     constructor(name) {
         this.name = name;
@@ -725,6 +727,21 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": "&#39;" }[m]));
 }
 
+function resetAllLayers() {
+    for (let i = 0; i < layers.length; i++) {
+        const layer = layers[i];
+        const layerCtx = layer.ctx;
+        layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+        layerCtx.save();
+        applySegmentClip(layerCtx);
+        layerCtx.fillStyle = layer.color;
+        layerCtx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
+        layerCtx.restore();
+    }
+
+    updateCanvasAndPreview();
+}
+
 // --- Undo/Redo ---
 function saveState() {
     const snapshot = layers.map(layer =>
@@ -1306,6 +1323,7 @@ function clearDrawing() {
     saveState();
     const currentLayer = getCurrentLayer();
     const layerCtx = currentLayer.ctx;
+    layerCtx.clearRect(0, 0, currentLayer.canvas.width, currentLayer.canvas.height);
     layerCtx.save();
     applySegmentClip(layerCtx);
     layerCtx.fillStyle = currentLayer.color;
@@ -1579,10 +1597,22 @@ function sanitizeFilename(name) {
     return name.replace(/[^a-z0-9_\-]/gi, '_');
 }
 
+segmentsInput.addEventListener('pointerdown', (e) => {
+    tempSegments = e.target.value;
+});
+
 // Steuerungs-Handlers
+segmentsInput.addEventListener('change', (e) => {
+    if (confirm('All layers will be reset!\nAre you sure you want to continue?')) {
+        resetAllLayers();
+    } else {
+        segmentsInput.value = tempSegments;
+        segmentValue.textContent = tempSegments;
+    }
+});
+
 segmentsInput.addEventListener('input', (e) => {
     segmentValue.textContent = e.target.value;
-    updateCanvasAndPreview();
 });
 
 brushSizeInput.addEventListener('input', (e) => {
