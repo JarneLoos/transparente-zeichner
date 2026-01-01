@@ -378,9 +378,16 @@ function addLayer(name = null, opacity = 0.5, visible = true, color = null, canv
     layer.visible = visible;
 
     if (!color) {
-        const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
-        const hslColor = `hsl(${hue}, 70%, 50%)`;
-        layer.color = hslToHex(hslColor);
+        if (layers.length === 0) {
+            const hslColor = `hsl(${LAYER_HUE_START}, 100%, 50%)`;
+            layer.color = hslToHex(hslColor);
+        } else {
+            const lastColor = layers[layers.length - 1].color;
+            const hsl = hexToHsl(lastColor);
+            const newHue = (hsl.h - LAYER_HUE_STEP + 360) % 360;
+            const newColor = `hsl(${newHue}, ${hsl.s}%, ${hsl.l}%)`;
+            layer.color = hslToHex(newColor);
+        }
     } else {
         layer.color = color;
     }
@@ -444,9 +451,15 @@ function copyLayer() {
     newLayer.opacity = src.opacity;
     newLayer.visible = src.visible;
 
-    const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
-    const hslColor = `hsl(${hue}, 70%, 50%)`;
-    newLayer.color = hslToHex(hslColor);
+    const lastColor = layers[layers.length - 1].color;
+    const hsl = hexToHsl(lastColor);
+    const newHue = (hsl.h - LAYER_HUE_STEP + 360) % 360;
+    const newColor = `hsl(${newHue}, ${hsl.s}%, ${hsl.l}%)`;
+    newLayer.color = hslToHex(newColor);
+
+    //const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
+    //const hslColor = `hsl(${hue}, 70%, 50%)`;
+    //newLayer.color = hslToHex(hslColor);
 
     newLayer.ctx.clearRect(0, 0, newLayer.canvas.width, newLayer.canvas.height);
     newLayer.ctx.drawImage(
@@ -821,10 +834,10 @@ function openColorPopup(layerIndex) {
         }
     });
 
-    __exportOutsideListener = (ev) => {
+    __colorOutsideListener = (ev) => {
         if (!__colorPopup) return;
         if (!__colorPopup.contains(ev.target)) {
-            closeExportPopup();
+            closeColorPopup();
         }
     };
     document.addEventListener('mousedown', __colorOutsideListener);
@@ -944,6 +957,63 @@ function hslToHex(hsl) {
     return '#' + Math.round(r * 255).toString(16).padStart(2, '0') +
         Math.round(g * 255).toString(16).padStart(2, '0') +
         Math.round(b * 255).toString(16).padStart(2, '0');
+}
+
+function hexToHsl(hex) {
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    var r = parseInt(result[1], 16);
+    var g = parseInt(result[2], 16);
+    var b = parseInt(result[3], 16);
+    var cssString = '';
+    r /= 255, g /= 255, b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max == min) {
+        h = s = 0; // achromatic
+    } else {
+        var d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+
+    h = Math.round(h * 360);
+    s = Math.round(s * 100);
+    l = Math.round(l * 100);
+
+    return { h, s, l };
+}
+
+function hexToH(hex) {
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    var r = parseInt(result[1], 16);
+    var g = parseInt(result[2], 16);
+    var b = parseInt(result[3], 16);
+    r /= 255, g /= 255, b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max == min) {
+        h = s = 0; // achromatic
+    } else {
+        var d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+
+    h = Math.round(h * 360);
+    s = Math.round(s * 100);
+    l = Math.round(l * 100);
+
+    return h;
 }
 
 function clampPan() {
