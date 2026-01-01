@@ -53,6 +53,12 @@ let __layerSettingsPopup = null;
 let __layerSettingsOutsideListener = null;
 let __exportPopup = null;
 let __exportOutsideListener = null;
+let __colorPopup = null;
+let __colorOutsideListener = null;
+
+// Color picker
+let cpLayerIndex;
+let cpCurrentColor;
 
 // Colors for automatic layer color sequence (start at yellow)
 const LAYER_HUE_START = 60; // yellow
@@ -372,9 +378,16 @@ function addLayer(name = null, opacity = 0.5, visible = true, color = null, canv
     layer.visible = visible;
 
     if (!color) {
-        const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
-        const hslColor = `hsl(${hue}, 70%, 50%)`;
-        layer.color = hslToHex(hslColor);
+        if (layers.length === 0) {
+            const hslColor = `hsl(${LAYER_HUE_START}, 100%, 50%)`;
+            layer.color = hslToHex(hslColor);
+        } else {
+            const lastColor = layers[layers.length - 1].color;
+            const hsl = hexToHsl(lastColor);
+            const newHue = (hsl.h - LAYER_HUE_STEP + 360) % 360;
+            const newColor = `hsl(${newHue}, ${hsl.s}%, ${hsl.l}%)`;
+            layer.color = hslToHex(newColor);
+        }
     } else {
         layer.color = color;
     }
@@ -438,9 +451,15 @@ function copyLayer() {
     newLayer.opacity = src.opacity;
     newLayer.visible = src.visible;
 
-    const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
-    const hslColor = `hsl(${hue}, 70%, 50%)`;
-    newLayer.color = hslToHex(hslColor);
+    const lastColor = layers[layers.length - 1].color;
+    const hsl = hexToHsl(lastColor);
+    const newHue = (hsl.h - LAYER_HUE_STEP + 360) % 360;
+    const newColor = `hsl(${newHue}, ${hsl.s}%, ${hsl.l}%)`;
+    newLayer.color = hslToHex(newColor);
+
+    //const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
+    //const hslColor = `hsl(${hue}, 70%, 50%)`;
+    //newLayer.color = hslToHex(hslColor);
 
     newLayer.ctx.clearRect(0, 0, newLayer.canvas.width, newLayer.canvas.height);
     newLayer.ctx.drawImage(
@@ -504,6 +523,7 @@ function updateLayersPanel() {
         visibilityCheckbox.type = 'checkbox';
         visibilityCheckbox.className = 'layer-visibility';
         visibilityCheckbox.checked = layer.visible;
+        visibilityCheckbox.title = 'Toggle layer visibility';
         visibilityCheckbox.addEventListener('change', (e) => {
             e.stopPropagation();
             toggleLayerVisibility(i, visibilityCheckbox.checked);
@@ -513,18 +533,16 @@ function updateLayersPanel() {
         visWrapper.appendChild(visibilityCheckbox);
         layerItem.appendChild(visWrapper);
 
-        const colorInput = document.createElement('input');
-        colorInput.type = 'color';
-        colorInput.className = 'layer-color';
-        colorInput.value = layer.color;
-        colorInput.title = 'Change color';
-        colorInput.addEventListener('change', (e) => {
+        const colorBtn = document.createElement('button');
+        colorBtn.type = 'button';
+        colorBtn.className = 'color-popup-btn';
+        colorBtn.style.backgroundColor = layer.color;
+        colorBtn.title = 'Layer color';
+        colorBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            setLayerColor(i, colorInput.value);
+            openColorPopup(i);
         });
-        colorInput.addEventListener('click', e => e.stopPropagation());
-        colorInput.addEventListener('mousedown', e => e.stopPropagation());
-        layerItem.appendChild(colorInput);
+        layerItem.appendChild(colorBtn);
 
         const title = document.createElement('div');
         title.className = 'layer-title';
@@ -537,6 +555,10 @@ function updateLayersPanel() {
         gearBtn.type = 'button';
         gearBtn.className = 'layer-gear';
         gearBtn.innerHTML = '⚙';
+        gearBtn.style.width = '32px';
+        gearBtn.style.height = '32px';
+        gearBtn.style.fontSize = '24px';
+        gearBtn.style.padding = '0';
         gearBtn.title = 'Settings';
         gearBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -546,6 +568,8 @@ function updateLayersPanel() {
 
         const dragHandle = document.createElement('div');
         dragHandle.className = 'layer-drag-handle';
+        dragHandle.style.width = '20px';
+        dragHandle.style.height = '32px';
         dragHandle.textContent = '⋮⋮';
         dragHandle.draggable = true;
 
@@ -644,6 +668,7 @@ function setLayerColor(index, color) {
 
     layer.ctx.putImageData(imageData, 0, 0);
     updateCanvasAndPreview();
+    updateLayersPanel();
 }
 
 function openLayerSettings(index, anchorEl) {
@@ -740,6 +765,98 @@ function resetAllLayers() {
     }
 
     updateCanvasAndPreview();
+}
+
+function openColorPopup(layerIndex) {
+    closeColorPopup();
+
+    cpLayerIndex = layerIndex;
+    const layer = layers[layerIndex];
+
+    // Create popup
+    __colorPopup = document.createElement('div');
+    __colorPopup.className = 'color-popup';
+    __colorPopup.innerHTML = `
+        <div>
+            <h3>Pick a color</h3>
+        </div>
+
+        <div id="picker" style="margin-top:8px;"></div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <input type="text" id="color-text"/>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn-secondary" onclick="applyColor()">OK</button>
+            <button class="btn-secondary" onclick="closeColorPopup()">Cancel</button>
+        </div>
+    `;
+
+    document.body.appendChild(__colorPopup);
+
+    const pickerEl = __colorPopup.querySelector('#picker');
+    const picker = new iro.ColorPicker(pickerEl, {
+        width: 240,
+        color: layer.color,
+    });
+
+    const colorTextInput = __colorPopup.querySelector('#color-text');
+    colorTextInput.value = layer.color;
+
+    picker.on('color:change', (color) => {
+        const hex = color.hexString;
+        cpCurrentColor = hex;
+        colorTextInput.value = hex;
+    });
+
+    colorTextInput.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (val.match(/^#([0-9a-fA-F]{6})$/)) {
+            cpCurrentColor = val;
+            picker.color.set(val);
+        }
+    });
+
+    colorTextInput.addEventListener('blur', (e) => {
+        const val = e.target.value;
+        if (val.match(/^#([0-9a-fA-F]{6})$/)) {
+            cpCurrentColor = val;
+            picker.color.set(val);
+        } else {
+            e.target.value = cpCurrentColor;
+        }
+    });
+
+    colorTextInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.target.blur();
+        }
+    });
+
+    __colorOutsideListener = (ev) => {
+        if (!__colorPopup) return;
+        if (!__colorPopup.contains(ev.target)) {
+            closeColorPopup();
+        }
+    };
+    document.addEventListener('mousedown', __colorOutsideListener);
+}
+
+function closeColorPopup() {
+    if (__colorPopup) {
+        __colorPopup.remove();
+        __colorPopup = null;
+    }
+    if (__colorOutsideListener) {
+        document.removeEventListener('mousedown', __colorOutsideListener);
+        __colorOutsideListener = null;
+    }
+}
+
+function applyColor() {
+    setLayerColor(cpLayerIndex, cpCurrentColor);
+    closeColorPopup();
 }
 
 // --- Undo/Redo ---
@@ -840,6 +957,35 @@ function hslToHex(hsl) {
     return '#' + Math.round(r * 255).toString(16).padStart(2, '0') +
         Math.round(g * 255).toString(16).padStart(2, '0') +
         Math.round(b * 255).toString(16).padStart(2, '0');
+}
+
+function hexToHsl(hex) {
+    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    var r = parseInt(result[1], 16);
+    var g = parseInt(result[2], 16);
+    var b = parseInt(result[3], 16);
+    var cssString = '';
+    r /= 255, g /= 255, b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    var h, s, l = (max + min) / 2;
+    if (max == min) {
+        h = s = 0; // achromatic
+    } else {
+        var d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+
+    h = Math.round(h * 360);
+    s = Math.round(s * 100);
+    l = Math.round(l * 100);
+
+    return { h, s, l };
 }
 
 function clampPan() {
