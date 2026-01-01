@@ -401,6 +401,72 @@ button {
         transform: translate(-50%, -50%) !important;
     }
 
+/* Color picker*/
+.color-popup {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 2200;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    padding: 14px;
+    border-radius: 10px;
+    min-width: 260px;
+    max-width: 94vw;
+    width: auto;
+    opacity: 0;
+    animation: exportPopupEnter 160ms ease-out forwards;
+    pointer-events: auto;
+}
+
+/* leichter Einblend-Effekt */
+@keyframes colorPopupEnter {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -46%) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+/* Inhalt / Layout im Popup */
+.color-popup .ls-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+    .color-popup .ls-row span {
+        width: 74px;
+        font-weight: 600;
+        font-size: 13px;
+    }
+
+/* Optional: close button stil */
+.color-popup .ls-close {
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
+/* Stelle sicher, dass das Popup über allem liegt und Klicks abfängt */
+.color-popup,
+.color-popup * {
+    box-sizing: border-box;
+}
+
+    /* Verhindere, dass inline left/top vom JS das Layout bricht */
+    .color-popup[style] {
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important;
+    }
+
 /* Responsive: mobile -> single column */
 @media (max-width: 980px) {
     .app-grid {
