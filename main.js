@@ -56,6 +56,10 @@ let __exportOutsideListener = null;
 let __colorPopup = null;
 let __colorOutsideListener = null;
 
+// Color picker
+let cpLayerIndex;
+let cpCurrentColor;
+
 // Colors for automatic layer color sequence (start at yellow)
 const LAYER_HUE_START = 60; // yellow
 const LAYER_HUE_STEP = 15;
@@ -506,6 +510,7 @@ function updateLayersPanel() {
         visibilityCheckbox.type = 'checkbox';
         visibilityCheckbox.className = 'layer-visibility';
         visibilityCheckbox.checked = layer.visible;
+        visibilityCheckbox.title = 'Toggle layer visibility';
         visibilityCheckbox.addEventListener('change', (e) => {
             e.stopPropagation();
             toggleLayerVisibility(i, visibilityCheckbox.checked);
@@ -515,27 +520,14 @@ function updateLayersPanel() {
         visWrapper.appendChild(visibilityCheckbox);
         layerItem.appendChild(visWrapper);
 
-        //const colorInput = document.createElement('input');
-        //colorInput.type = 'color';
-        //colorInput.className = 'layer-color';
-        //colorInput.value = layer.color;
-        //colorInput.title = 'Change color';
-        //colorInput.addEventListener('change', (e) => {
-        //    e.stopPropagation();
-        //    setLayerColor(i, colorInput.value);
-        //});
-        //colorInput.addEventListener('click', e => e.stopPropagation());
-        //colorInput.addEventListener('mousedown', e => e.stopPropagation());
-        //layerItem.appendChild(colorInput);
-
         const colorBtn = document.createElement('button');
         colorBtn.type = 'button';
-        //colorBtn.className = 'layer-gear';
-        colorBtn.innerHTML = '🎨';
-        colorBtn.title = 'Color';
+        colorBtn.className = 'color-popup-btn';
+        colorBtn.style.backgroundColor = layer.color;
+        colorBtn.title = 'Layer color';
         colorBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            openColorPopup(i, colorBtn);
+            openColorPopup(i);
         });
         layerItem.appendChild(colorBtn);
 
@@ -550,6 +542,10 @@ function updateLayersPanel() {
         gearBtn.type = 'button';
         gearBtn.className = 'layer-gear';
         gearBtn.innerHTML = '⚙';
+        gearBtn.style.width = '32px';
+        gearBtn.style.height = '32px';
+        gearBtn.style.fontSize = '24px';
+        gearBtn.style.padding = '0';
         gearBtn.title = 'Settings';
         gearBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -559,6 +555,8 @@ function updateLayersPanel() {
 
         const dragHandle = document.createElement('div');
         dragHandle.className = 'layer-drag-handle';
+        dragHandle.style.width = '20px';
+        dragHandle.style.height = '32px';
         dragHandle.textContent = '⋮⋮';
         dragHandle.draggable = true;
 
@@ -657,6 +655,7 @@ function setLayerColor(index, color) {
 
     layer.ctx.putImageData(imageData, 0, 0);
     updateCanvasAndPreview();
+    updateLayersPanel();
 }
 
 function openLayerSettings(index, anchorEl) {
@@ -755,8 +754,11 @@ function resetAllLayers() {
     updateCanvasAndPreview();
 }
 
-function openColorPopup() {
+function openColorPopup(layerIndex) {
     closeColorPopup();
+
+    cpLayerIndex = layerIndex;
+    const layer = layers[layerIndex];
 
     // Create popup
     __colorPopup = document.createElement('div');
@@ -769,7 +771,11 @@ function openColorPopup() {
         <div id="picker" style="margin-top:8px;"></div>
 
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-            <button class="btn-secondary" onclick="closeColorPopup()">OK</button>
+            <input type="text" id="color-text"/>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn-secondary" onclick="applyColor()">OK</button>
             <button class="btn-secondary" onclick="closeColorPopup()">Cancel</button>
         </div>
     `;
@@ -779,12 +785,40 @@ function openColorPopup() {
     const pickerEl = __colorPopup.querySelector('#picker');
     const picker = new iro.ColorPicker(pickerEl, {
         width: 240,
-        color: '#ff0000'
+        color: layer.color,
     });
+
+    const colorTextInput = __colorPopup.querySelector('#color-text');
+    colorTextInput.value = layer.color;
 
     picker.on('color:change', (color) => {
         const hex = color.hexString;
-        console.log('Farbe ausgewählt:', hex);
+        cpCurrentColor = hex;
+        colorTextInput.value = hex;
+    });
+
+    colorTextInput.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (val.match(/^#([0-9a-fA-F]{6})$/)) {
+            cpCurrentColor = val;
+            picker.color.set(val);
+        }
+    });
+
+    colorTextInput.addEventListener('blur', (e) => {
+        const val = e.target.value;
+        if (val.match(/^#([0-9a-fA-F]{6})$/)) {
+            cpCurrentColor = val;
+            picker.color.set(val);
+        } else {
+            e.target.value = cpCurrentColor;
+        }
+    });
+
+    colorTextInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.target.blur();
+        }
     });
 
     __exportOutsideListener = (ev) => {
@@ -805,6 +839,11 @@ function closeColorPopup() {
         document.removeEventListener('mousedown', __colorOutsideListener);
         __colorOutsideListener = null;
     }
+}
+
+function applyColor() {
+    setLayerColor(cpLayerIndex, cpCurrentColor);
+    closeColorPopup();
 }
 
 // --- Undo/Redo ---
