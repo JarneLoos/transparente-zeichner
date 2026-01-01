@@ -59,6 +59,7 @@ let __colorOutsideListener = null;
 // Color picker
 let cpLayerIndex;
 let cpCurrentColor;
+let canvasBgColor = '#ffffff';
 
 // Colors for automatic layer color sequence (start at yellow)
 const LAYER_HUE_START = 60; // yellow
@@ -843,6 +844,79 @@ function openColorPopup(layerIndex) {
     document.addEventListener('mousedown', __colorOutsideListener);
 }
 
+function openBackgroundColorPopup() {
+    closeColorPopup();
+
+    // Create popup
+    __colorPopup = document.createElement('div');
+    __colorPopup.className = 'color-popup';
+    __colorPopup.innerHTML = `
+        <div>
+            <h3>Pick a color</h3>
+        </div>
+
+        <div id="picker" style="margin-top:8px;"></div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <input type="text" id="color-text"/>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn-secondary" onclick="applyBackgroundColor()">OK</button>
+            <button class="btn-secondary" onclick="closeColorPopup()">Cancel</button>
+        </div>
+    `;
+
+    document.body.appendChild(__colorPopup);
+
+    const pickerEl = __colorPopup.querySelector('#picker');
+    const picker = new iro.ColorPicker(pickerEl, {
+        width: 240,
+        color: canvasBgColor,
+    });
+
+    const colorTextInput = __colorPopup.querySelector('#color-text');
+    colorTextInput.value = canvasBgColor;
+
+    picker.on('color:change', (color) => {
+        const hex = color.hexString;
+        canvasBgColor = hex;
+        colorTextInput.value = hex;
+    });
+
+    colorTextInput.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (val.match(/^#([0-9a-fA-F]{6})$/)) {
+            canvasBgColor = val;
+            picker.color.set(val);
+        }
+    });
+
+    colorTextInput.addEventListener('blur', (e) => {
+        const val = e.target.value;
+        if (val.match(/^#([0-9a-fA-F]{6})$/)) {
+            canvasBgColor = val;
+            picker.color.set(val);
+        } else {
+            e.target.value = canvasBgColor;
+        }
+    });
+
+    colorTextInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.target.blur();
+        }
+    });
+
+    __colorOutsideListener = (ev) => {
+        if (!__colorPopup) return;
+        if (!__colorPopup.contains(ev.target)) {
+            closeColorPopup();
+        }
+    };
+    document.addEventListener('mousedown', __colorOutsideListener);
+}
+
 function closeColorPopup() {
     if (__colorPopup) {
         __colorPopup.remove();
@@ -856,6 +930,14 @@ function closeColorPopup() {
 
 function applyColor() {
     setLayerColor(cpLayerIndex, cpCurrentColor);
+    closeColorPopup();
+}
+
+function applyBackgroundColor() {
+    const bgColorBtn = document.getElementById('bg-color-btn');
+    bgColorBtn.style.backgroundColor = canvasBgColor;
+
+    updateCanvasAndPreview();
     closeColorPopup();
 }
 
@@ -1371,25 +1453,6 @@ document.addEventListener('keydown', e => {
     }
 });
 
-// --- Background color control for both canvases ---
-const bgColorPicker = document.getElementById('bgColorPicker');
-
-// initial value (from picker)
-let canvasBgColor = bgColorPicker.value;
-
-// set CSS backgrounds
-drawingCanvas.style.backgroundColor = canvasBgColor;
-previewCanvas.style.backgroundColor = canvasBgColor;
-
-// Event: live update when color changes
-bgColorPicker.addEventListener('input', () => {
-    canvasBgColor = bgColorPicker.value;
-    drawingCanvas.style.backgroundColor = canvasBgColor;
-    previewCanvas.style.backgroundColor = canvasBgColor;
-
-    updateCanvasAndPreview();
-});
-
 const showGuidesInput = document.getElementById('showGuides');
 showGuidesInput.addEventListener('change', function () {
     showGuides = this.checked;
@@ -1781,6 +1844,8 @@ function initializeCanvases() {
     // set CSS backgrounds
     drawingCanvas.style.backgroundColor = 'white';
     previewCanvas.style.backgroundColor = 'white';
+    const bgColorBtn = document.getElementById('bg-color-btn');
+    bgColorBtn.style.backgroundColor = 'white';
 
     // Größe des Viewports an Fenster anpassen, dann Canvas-Buffer setzen
     adjustCanvasViewportSize();

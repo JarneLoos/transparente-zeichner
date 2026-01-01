@@ -480,6 +480,8 @@ button {
 .color-popup-btn {
     width: 32px;
     height: 32px;
+    border: 1px solid #000;
+    border-radius: 4px;
 }
 
 /* Responsive: mobile -> single column */
