@@ -765,8 +765,12 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": "&#39;" }[m]));
 }
 
-function resetAllLayers() {
+function resetAfterSegmentChange() {
+    // Save the old segments value
+    const newSegments = segmentsInput.value;
+    segmentsInput.value = tempSegments;
     saveState();
+    segmentsInput.value = newSegments;
 
     for (let i = 0; i < layers.length; i++) {
         const layer = layers[i];
@@ -1790,7 +1794,7 @@ segmentsInput.addEventListener('pointerdown', (e) => {
 // Steuerungs-Handlers
 segmentsInput.addEventListener('change', (e) => {
     if (confirm('All layers will be reset!\nAre you sure you want to continue?')) {
-        resetAllLayers();
+        resetAfterSegmentChange();
     } else {
         segmentsInput.value = tempSegments;
         segmentValue.textContent = tempSegments;
