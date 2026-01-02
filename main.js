@@ -372,7 +372,11 @@ function drawSegmentGuideOverlay() {
 }
 
 // Layers functions
-function addLayer(name = null, opacity = 0.5, visible = true, color = null, canvas = null) {
+function addLayer(name = null, opacity = 0.5, visible = true, color = null, canvas = null, dontSaveState = false) {
+    if (!dontSaveState) {
+        saveState();
+    }
+
     if (!name) name = `Layer ${layers.length + 1}`;
     const layer = new Layer(name);
     layer.opacity = opacity;
@@ -415,6 +419,9 @@ function deleteLayer() {
         alert('You must have at least one layer!');
         return;
     }
+
+    saveState();
+
     layers.splice(currentLayerIndex, 1);
     if (currentLayerIndex >= layers.length) currentLayerIndex = layers.length - 1;
     updateLayersPanel();
@@ -616,11 +623,15 @@ function selectLayer(index) {
 }
 
 function setLayerOpacity(index, value) {
+    saveState();
+
     layers[index].opacity = value / 100;
     updateCanvasAndPreview();
 }
 
 function toggleLayerVisibility(index, visible) {
+    saveState();
+
     layers[index].visible = visible;
 
     updateCanvasAndPreview();
@@ -631,6 +642,8 @@ function getCurrentLayer() {
 }
 
 function moveLayer(fromIndex, toIndex) {
+    saveState();
+
     const [movedLayer] = layers.splice(fromIndex, 1);
     layers.splice(toIndex, 0, movedLayer);
 
@@ -648,6 +661,8 @@ function moveLayer(fromIndex, toIndex) {
 }
 
 function setLayerColor(index, color) {
+    saveState();
+
     const layer = layers[index];
     layer.color = color;
 
@@ -751,6 +766,8 @@ function escapeHtml(str) {
 }
 
 function resetAllLayers() {
+    saveState();
+
     for (let i = 0; i < layers.length; i++) {
         const layer = layers[i];
         const layerCtx = layer.ctx;
@@ -865,24 +882,55 @@ function applyColor() {
 
 // --- Undo/Redo ---
 function saveState() {
-    const snapshot = layers.map(layer =>
-        layer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height)
-    );
-    undoStack.push(snapshot);
+    const state = getCurrentState();
+    undoStack.push(state);
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
     redoStack.length = 0;
 }
 
-function restoreState(snapshot) {
-    snapshot.forEach((imageData, index) => {
-        layers[index].ctx.putImageData(imageData, 0, 0);
-    });
+function getCurrentState() {
+    const state = { 
+        segments: segmentsInput.value,
+        layers: layers.map(layer => ({
+            name: layer.name,
+            opacity: layer.opacity,
+            visible: layer.visible,
+            color: layer.color,
+            imgData: layer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height),
+        }))
+    }
+    return state;
+}
+
+function restoreState(state) {
+    segmentsInput.value = state.segments;
+    segmentValue.textContent = state.segments;
+
+    // Entferne existierende Layer
+    layers = [];
+    const layersPanel = document.getElementById('layersPanel');
+    if (layersPanel) layersPanel.innerHTML = '';
+
+    // Erstelle Layer aus state
+    for (let i = 0; i < state.layers.length; i++) {
+        const layer = state.layers[i];
+        const c = document.createElement('canvas');
+        c.width = drawingCanvas.width;
+        c.height = drawingCanvas.height;
+        const ctx = c.getContext('2d');
+        ctx.putImageData(layer.imgData, 0, 0);
+        addLayer(layer.name, layer.opacity, layer.visible, layer.color, c, true);
+    }
+
+    currentLayerIndex = Math.min(currentLayerIndex, layers.length - 1);
+
+    updateLayersPanel();
     updateCanvasAndPreview();
 }
 
 function undo() {
     if (undoStack.length === 0) return;
-    const currentState = layers.map(layer => layer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height));
+    const currentState = getCurrentState();
     redoStack.push(currentState);
     const previousState = undoStack.pop();
     restoreState(previousState);
@@ -890,7 +938,7 @@ function undo() {
 
 function redo() {
     if (redoStack.length === 0) return;
-    const currentState = layers.map(layer => layer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height));
+    const currentState = getCurrentState();
     undoStack.push(currentState);
     const nextState = redoStack.pop();
     restoreState(nextState);
@@ -1497,7 +1545,8 @@ async function loadProject(project) {
     // Setze UI-Werte
     if (project.settings) {
         const s = project.settings;
-        if (document.getElementById('segments')) document.getElementById('segments').value = s.segments ?? 12;
+        segmentsInput.value = s.segments;
+        segmentValue.textContent = s.segments;
     }
 
     // Entferne existierende Layer
@@ -1517,7 +1566,6 @@ async function loadProject(project) {
     updateTransformStyle();
 }
 
-// ---------- Hilfsfunktion: Layer aus DataURL anlegen ----------
 function createLayerFromDataURL(layerMeta, idx) {
     return new Promise((resolve, reject) => {
         const img = new Image();
@@ -1769,7 +1817,7 @@ function setTool(tool) {
 }
 
 // Initialisierung
-function initializeCanvases() {
+function initialize() {
     // set CSS backgrounds
     drawingCanvas.style.backgroundColor = 'white';
     previewCanvas.style.backgroundColor = 'white';
@@ -1789,6 +1837,9 @@ function initializeCanvases() {
 
     // Positioniere das 'Weitere Einstellungen' Panel an der richtigen Stelle
     syncOtherControlsPanel();
+
+    undoStack.length = 0;
+    redoStack.length = 0;
 }
 
 // Verschiebe das "other-controls-panel" ins linke Sidebar- bzw. zurück ans Ende des Grid für Mobile. Dadurch erscheint es direkt unter
@@ -1901,4 +1952,4 @@ window.setTool = setTool;
 window.undo = undo;
 window.redo = redo;
 
-initializeCanvases();
+initialize();
