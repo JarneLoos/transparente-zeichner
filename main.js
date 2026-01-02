@@ -53,12 +53,13 @@ let __layerSettingsPopup = null;
 let __layerSettingsOutsideListener = null;
 let __exportPopup = null;
 let __exportOutsideListener = null;
-let __colorPopup = null;
-let __colorOutsideListener = null;
 
 // Color picker
-let cpLayerIndex;
-let cpCurrentColor;
+let __colorPopup = null;
+let __colorOutsideListener = null;
+let __colorPicker = null;
+let cpLayerIndex = 0;
+let canvasBgColor = '#ffffff';
 
 // Colors for automatic layer color sequence (start at yellow)
 const LAYER_HUE_START = 60; // yellow
@@ -451,15 +452,11 @@ function copyLayer() {
     newLayer.opacity = src.opacity;
     newLayer.visible = src.visible;
 
-    const lastColor = layers[layers.length - 1].color;
+    const lastColor = layers[currentLayerIndex].color;
     const hsl = hexToHsl(lastColor);
     const newHue = (hsl.h - LAYER_HUE_STEP + 360) % 360;
     const newColor = `hsl(${newHue}, ${hsl.s}%, ${hsl.l}%)`;
     newLayer.color = hslToHex(newColor);
-
-    //const hue = (LAYER_HUE_START - layers.length * LAYER_HUE_STEP + 3600) % 360;
-    //const hslColor = `hsl(${hue}, 70%, 50%)`;
-    //newLayer.color = hslToHex(hslColor);
 
     newLayer.ctx.clearRect(0, 0, newLayer.canvas.width, newLayer.canvas.height);
     newLayer.ctx.drawImage(
@@ -540,7 +537,8 @@ function updateLayersPanel() {
         colorBtn.title = 'Layer color';
         colorBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            openColorPopup(i);
+            cpLayerIndex = i;
+            openColorPopup(layer.color);
         });
         layerItem.appendChild(colorBtn);
 
@@ -767,11 +765,8 @@ function resetAllLayers() {
     updateCanvasAndPreview();
 }
 
-function openColorPopup(layerIndex) {
+function openColorPopup(initialColor) {
     closeColorPopup();
-
-    cpLayerIndex = layerIndex;
-    const layer = layers[layerIndex];
 
     // Create popup
     __colorPopup = document.createElement('div');
@@ -783,8 +778,9 @@ function openColorPopup(layerIndex) {
 
         <div id="picker" style="margin-top:8px;"></div>
 
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-            <input type="text" id="color-text"/>
+        <div class="color-row">
+            <input type="text" id="color-text" placeholder="#rrggbb" />
+            <div id="color-swatch" class="color-swatch" title="Selected color"></div>
         </div>
 
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
@@ -796,35 +792,36 @@ function openColorPopup(layerIndex) {
     document.body.appendChild(__colorPopup);
 
     const pickerEl = __colorPopup.querySelector('#picker');
-    const picker = new iro.ColorPicker(pickerEl, {
+    __colorPicker = new iro.ColorPicker(pickerEl, {
         width: 240,
-        color: layer.color,
+        color: initialColor,
     });
 
     const colorTextInput = __colorPopup.querySelector('#color-text');
-    colorTextInput.value = layer.color;
+    colorTextInput.value = initialColor;
 
-    picker.on('color:change', (color) => {
+    const colorSwatch = __colorPopup.querySelector('#color-swatch');
+    colorSwatch.style.backgroundColor = initialColor;
+
+    __colorPicker.on('color:change', (color) => {
         const hex = color.hexString;
-        cpCurrentColor = hex;
         colorTextInput.value = hex;
+        colorSwatch.style.backgroundColor = hex;
     });
 
     colorTextInput.addEventListener('input', (e) => {
         const val = e.target.value;
         if (val.match(/^#([0-9a-fA-F]{6})$/)) {
-            cpCurrentColor = val;
-            picker.color.set(val);
+            __colorPicker.color.set(val);
         }
     });
 
     colorTextInput.addEventListener('blur', (e) => {
         const val = e.target.value;
         if (val.match(/^#([0-9a-fA-F]{6})$/)) {
-            cpCurrentColor = val;
-            picker.color.set(val);
+            __colorPicker.color.set(val);
         } else {
-            e.target.value = cpCurrentColor;
+            e.target.value = __colorPicker.color.hexString;
         }
     });
 
@@ -855,7 +852,14 @@ function closeColorPopup() {
 }
 
 function applyColor() {
-    setLayerColor(cpLayerIndex, cpCurrentColor);
+    if (cpLayerIndex === -1) {
+        canvasBgColor = __colorPicker.color.hexString;
+        const bgColorBtn = document.getElementById('bg-color-btn');
+        bgColorBtn.style.backgroundColor = canvasBgColor;
+        updateCanvasAndPreview();
+    } else {
+        setLayerColor(cpLayerIndex, __colorPicker.color.hexString);
+    }
     closeColorPopup();
 }
 
@@ -1371,23 +1375,11 @@ document.addEventListener('keydown', e => {
     }
 });
 
-// --- Background color control for both canvases ---
-const bgColorPicker = document.getElementById('bgColorPicker');
-
-// initial value (from picker)
-let canvasBgColor = bgColorPicker.value;
-
-// set CSS backgrounds
-drawingCanvas.style.backgroundColor = canvasBgColor;
-previewCanvas.style.backgroundColor = canvasBgColor;
-
-// Event: live update when color changes
-bgColorPicker.addEventListener('input', () => {
-    canvasBgColor = bgColorPicker.value;
-    drawingCanvas.style.backgroundColor = canvasBgColor;
-    previewCanvas.style.backgroundColor = canvasBgColor;
-
-    updateCanvasAndPreview();
+// background color button listener
+const bgColorBtn = document.getElementById('bg-color-btn');
+bgColorBtn.addEventListener('click', () => {
+    cpLayerIndex = -1;
+    openColorPopup(canvasBgColor);
 });
 
 const showGuidesInput = document.getElementById('showGuides');
@@ -1781,6 +1773,8 @@ function initializeCanvases() {
     // set CSS backgrounds
     drawingCanvas.style.backgroundColor = 'white';
     previewCanvas.style.backgroundColor = 'white';
+    const bgColorBtn = document.getElementById('bg-color-btn');
+    bgColorBtn.style.backgroundColor = 'white';
 
     // Größe des Viewports an Fenster anpassen, dann Canvas-Buffer setzen
     adjustCanvasViewportSize();
