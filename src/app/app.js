@@ -158,9 +158,6 @@ function resizeDrawingCanvas() {
     drawingCanvas.style.width = displayW + 'px';
     drawingCanvas.style.height = displayH + 'px';
 
-    // re-acquire context
-    ctx = drawingCanvas.getContext('2d');
-
     // Resample each layer to new size (preserve content)
     layers.forEach(layer => {
         const tmp = document.createElement('canvas');
@@ -311,6 +308,7 @@ function updatePreview() {
 
 // Draw composed drawing canvas from layer canvases
 function renderDrawingCanvas() {
+    const ctx = drawingCanvas.getContext('2d');
     ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
     ctx.fillStyle = typeof canvasBgColor !== 'undefined' ? canvasBgColor : '#ffffff';
     ctx.fillRect(0, 0, drawingCanvas.width, drawingCanvas.height);
@@ -349,6 +347,7 @@ function updateCanvasAndPreview() {
 function drawSegmentGuideOverlay() {
     const info = getSegmentInfo();
 
+    const ctx = drawingCanvas.getContext('2d');
     ctx.save();
     ctx.strokeStyle = 'rgba(0,0,0,1)';
     ctx.lineWidth = Math.max(1, Math.round(2 * (window.devicePixelRatio || 1)));
@@ -892,7 +891,6 @@ function applyColor() {
 
 // --- Undo/Redo ---
 function saveState() {
-    hasUnsavedProgress = true;
     const state = getCurrentState();
     undoStack.push(state);
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -1606,7 +1604,6 @@ async function saveProjectInBrowser() {
     try {
         const project = buildCurrentProjectObject();
         await idbPut(IDB_KEY_LAST, project);
-        hasUnsavedProgress = false;
         closeExportPopup();
     } catch (err) {
         console.error(err);
@@ -1978,7 +1975,6 @@ function syncUIStateFromDOM() {
     if (toolSizeSlider && toolSizeLabel) {
         const value = Number(toolSizeSlider.value);
         toolSizeLabel.textContent = value;
-        currentToolSize = value;
     }
 
     // SEGMENTS
@@ -1987,7 +1983,6 @@ function syncUIStateFromDOM() {
     if (segmentsSlider && segmentsLabel) {
         const value = Number(segmentsSlider.value);
         segmentsLabel.textContent = value;
-        currentSegments = value;
     }
 
     // CHECKBOXEN
@@ -2039,10 +2034,16 @@ export {
     copyLayer,
     setLayerOpacity,
     toggleLayerVisibility,
+    applyColor,
     clearDrawing,
     loadProjectFromBrowser,
     importProject,
+    openColorPopup,
+    closeColorPopup,
+    openImportPopup,
+    closeImportPopup,
     openExportPopup,
+    closeExportPopup,
     saveProjectInBrowser,
     exportAsJSON,
     exportAsPNG,
