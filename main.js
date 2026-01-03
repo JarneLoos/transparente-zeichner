@@ -53,6 +53,8 @@ let __layerSettingsPopup = null;
 let __layerSettingsOutsideListener = null;
 let __exportPopup = null;
 let __exportOutsideListener = null;
+let __importPopup = null;
+let __importOutsideListener = null;
 
 // Color picker
 let __colorPopup = null;
@@ -68,6 +70,11 @@ const LAYER_HUE_STEP = 15;
 let showOnlySelected = false;
 
 let tempSegments = 0;
+
+// Save / load
+const IDB_DB_NAME = 'transparent_project_db';
+const IDB_STORE = 'kv';
+const IDB_KEY_LAST = 'lastProject_v1';
 
 class Layer {
     constructor(name) {
@@ -886,6 +893,7 @@ function applyColor() {
 
 // --- Undo/Redo ---
 function saveState() {
+    hasUnsavedProgress = true;
     const state = getCurrentState();
     undoStack.push(state);
     if (undoStack.length > MAX_HISTORY) undoStack.shift();
@@ -946,6 +954,11 @@ function redo() {
     undoStack.push(currentState);
     const nextState = redoStack.pop();
     restoreState(nextState);
+}
+
+function resetUndoRedo() {
+    undoStack.length = 0;
+    redoStack.length = 0;
 }
 
 function getSegmentInfo() {
@@ -1414,7 +1427,7 @@ drawingCanvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 
-// Keyboard shortcuts for undo/redo
+// Keyboard shortcuts
 document.addEventListener('keydown', e => {
     if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
         e.preventDefault();
@@ -1426,6 +1439,13 @@ document.addEventListener('keydown', e => {
         redo();
     }
 });
+
+document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        saveProjectInBrowser();
+    }
+})
 
 // background color button listener
 const bgColorBtn = document.getElementById('bg-color-btn');
@@ -1523,26 +1543,98 @@ function clearDrawing() {
     updateCanvasAndPreview();
 }
 
-function importProject() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json,application/json';
-    input.onchange = async (e) => {
-        const f = e.target.files[0];
-        if (!f) return;
-        try {
-            const text = await f.text();
-            const project = JSON.parse(text);
-            await loadProject(project);
-        } catch (err) {
-            console.error(err);
-            alert('Fehler beim Laden der Datei. Ist es eine gültige Projekt-JSON?');
-        }
+// Save / load
+
+function buildCurrentProjectObject() {
+    return {
+        schemaVersion: 1,
+        meta: {
+            name: `transparent_project_${new Date().toISOString()}`,
+            exportedAt: new Date().toISOString(),
+        },
+        settings: {
+            segments: Number(document.getElementById('segments')?.value ?? 12),
+        },
+        layers: layers.map((layer, idx) => {
+            const dataURL = layer.canvas.toDataURL('image/png');
+            return {
+                idx: idx,
+                name: layer.name,
+                opacity: layer.opacity,
+                visible: layer.visible,
+                color: layer.color,
+                image: dataURL
+            };
+        })
     };
-    input.click();
+}
+
+function openProjectDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_DB_NAME, 1);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function idbGet(key) {
+    const db = await openProjectDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readonly');
+        const store = tx.objectStore(IDB_STORE);
+        const r = store.get(key);
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+    });
+}
+
+async function idbPut(key, value) {
+    const db = await openProjectDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        const store = tx.objectStore(IDB_STORE);
+        store.put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+async function saveProjectInBrowser() {
+    try {
+        const project = buildCurrentProjectObject();
+        await idbPut(IDB_KEY_LAST, project);
+        hasUnsavedProgress = false;
+        closeExportPopup();
+    } catch (err) {
+        console.error(err);
+        alert('Saving in browser failed.');
+    }
+}
+
+async function loadProjectFromBrowser() {
+    try {
+        const project = await idbGet(IDB_KEY_LAST);
+        if (!project) {
+            alert('No saved project found in browser.');
+            return;
+        }
+        await loadProject(project); // existiert bei dir schon (async)
+        closeExportPopup();
+    } catch (err) {
+        console.error(err);
+        alert('Loading from browser failed.');
+    }
+    closeImportPopup();
 }
 
 async function loadProject(project) {
+    // Bestätigung vom user
+    if (!confirm('The current project will be overwritten\nAre you sure you want to continue?')) return;
+
     // Grundvalidierung
     if (!project || !project.meta) throw new Error('Ungültiges Projektformat');
 
@@ -1568,6 +1660,7 @@ async function loadProject(project) {
     updateLayersPanel();
     updateCanvasAndPreview();
     updateTransformStyle();
+    resetUndoRedo();
 }
 
 function createLayerFromDataURL(layerMeta, idx) {
@@ -1598,77 +1691,30 @@ function createLayerFromDataURL(layerMeta, idx) {
     });
 }
 
-function openExportPopup() {
-    closeExportPopup();
-
-    // Create popup
-    __exportPopup = document.createElement('div');
-    __exportPopup.className = 'export-popup';
-    __exportPopup.innerHTML = `
-        <div>
-            <h3>Export</h3>
-        </div>
-        <div class="export-options" style="display: flex; gap: 8px; margin-top: 8px; margin-bottom: 8px;">
-            <button class="btn-secondary" onclick="exportAsJSON()">Project as json</button>
-            <button class="btn-secondary" onclick="exportAsPNG()">Preview as png</button>
-            <button class="btn-secondary" onclick="exportLayersAsPNG()">Layers as single png</button>
-            <button class="btn-secondary" onclick="exportLayersAsPNGs()">Layers as multiple png</button>
-        </div>
-                    
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-            <button class="btn-secondary" onclick="closeExportPopup()">Close</button>
-        </div>
-    `;
-
-    document.body.appendChild(__exportPopup);
-
-    __exportOutsideListener = (ev) => {
-        if (!__exportPopup) return;
-        if (!__exportPopup.contains(ev.target)) {
-            closeExportPopup();
+function importProject() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        try {
+            const text = await f.text();
+            const project = JSON.parse(text);
+            await loadProject(project);
+        } catch (err) {
+            console.error(err);
+            alert('Fehler beim Laden der Datei. Ist es eine gültige Projekt-JSON?');
         }
     };
-    document.addEventListener('mousedown', __exportOutsideListener);
-}
+    input.click();
 
-function closeExportPopup() {
-    if (__exportPopup) {
-        __exportPopup.remove();
-        __exportPopup = null;
-    }
-    if (__exportOutsideListener) {
-        document.removeEventListener('mousedown', __exportOutsideListener);
-        __exportOutsideListener = null;
-    }
+    closeImportPopup();
 }
 
 async function exportAsJSON() {
     const filename = `transparent_project_${new Date().toISOString()}.json`;
-    const project = {
-        schemaVersion: 1,
-        meta: {
-            name: filename.replace('.json', ''),
-            exportedAt: new Date().toISOString(),
-        },
-        settings: {
-            segments: Number(document.getElementById('segments')?.value ?? 12),
-        },
-        layers: await Promise.all(layers.map(async (layer, idx) => {
-            // für jede Layer: meta + image dataURL
-            // Wenn deine Layer-Canvas mehrere Größen haben, skaliere oder setze projektweite Größe
-            const canvas = layer.canvas;
-            // toDataURL ist synchron, aber ich lasse es in Promise um konsistent zu sein:
-            const dataURL = canvas.toDataURL('image/png');
-            return {
-                idx: idx,
-                name: layer.name,
-                opacity: layer.opacity,
-                visible: layer.visible,
-                color: layer.color,
-                image: dataURL
-            };
-        }))
-    };
+    const project = buildCurrentProjectObject();
 
     const blob = new Blob([JSON.stringify(project)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1680,6 +1726,7 @@ async function exportAsJSON() {
     a.remove();
     URL.revokeObjectURL(url);
 
+    hasUnsavedProgress = false;
     closeExportPopup();
 }
 
@@ -1747,44 +1794,92 @@ function exportLayersAsPNG() {
     closeExportPopup();
 }
 
-function exportLayersAsPNGs() {
-    if (!layers || layers.length === 0) return;
-
-    // kleine Verzögerung zwischen Klicks, damit Browser die Downloads nicht blockiert
-    for (let i = 0; i < layers.length; i++) {
-        const layer = layers[i];
-
-        // Kopiere Ebene in temporäres Canvas (Originalgröße)
-        const tmp = document.createElement('canvas');
-        tmp.width = drawingCanvas.width;
-        tmp.height = drawingCanvas.height;
-        const tmpCtx = tmp.getContext('2d');
-
-        // Transparenter Hintergrund: wir zeichnen direkt die Layer-Canvas (enthält Alpha)
-        tmpCtx.clearRect(0, 0, tmp.width, tmp.height);
-        tmpCtx.drawImage(layer.canvas, 0, 0);
-
-        const dataUrl = tmp.toDataURL('image/png');
-
-        const filename = `${String(i + 1).padStart(2, '0')}_${sanitizeFilename(layer.name)}${layer.visible ? '' : '_hidden'}.png`;
-
-        // schedule click leicht gestaffelt
-        setTimeout(() => {
-            const link = document.createElement('a');
-            link.href = dataUrl;
-            link.download = filename;
-            // some browsers require element in DOM for click to work reliably
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }, i * 120);
-    }
-
+function openExportPopup() {
     closeExportPopup();
+
+    // Create popup
+    __exportPopup = document.createElement('div');
+    __exportPopup.className = 'export-popup';
+    __exportPopup.innerHTML = `
+        <div>
+            <h3>Export</h3>
+        </div>
+
+        <div class="export-options" style="display: grid; grid-template-columns: repeat(1, 1fr); gap: 8px; margin-top: 8px; margin-bottom: 8px;">
+            <button class="btn-secondary" onclick="saveProjectInBrowser()">Save project in browser</button>
+            <button class="btn-secondary" onclick="exportAsJSON()">Export project (.json)</button>
+            <button class="btn-secondary" onclick="exportAsPNG()">Export preview (.png)</button>
+            <button class="btn-secondary" onclick="exportLayersAsPNG()">Export layers (.png)</button>
+        </div>
+                    
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn-secondary" onclick="closeExportPopup()">Close</button>
+        </div>
+    `;
+
+    document.body.appendChild(__exportPopup);
+
+    __exportOutsideListener = (ev) => {
+        if (!__exportPopup) return;
+        if (!__exportPopup.contains(ev.target)) {
+            closeExportPopup();
+        }
+    };
+    document.addEventListener('mousedown', __exportOutsideListener);
 }
 
-function sanitizeFilename(name) {
-    return name.replace(/[^a-z0-9_\-]/gi, '_');
+function closeExportPopup() {
+    if (__exportPopup) {
+        __exportPopup.remove();
+        __exportPopup = null;
+    }
+    if (__exportOutsideListener) {
+        document.removeEventListener('mousedown', __exportOutsideListener);
+        __exportOutsideListener = null;
+    }
+}
+
+function openImportPopup() {
+    closeImportPopup();
+
+    // Create popup
+    __importPopup = document.createElement('div');
+    __importPopup.className = 'export-popup';
+    __importPopup.innerHTML = `
+        <div>
+            <h3>Import</h3>
+        </div>
+
+        <div class="export-options" style="display: grid; grid-template-columns: repeat(1, 1fr); gap: 8px; margin-top: 8px; margin-bottom: 8px;">
+            <button class="btn-secondary" onclick="loadProjectFromBrowser()">Load project from browser</button>
+            <button class="btn-secondary" onclick="importProject()">Import project (.json)</button>
+        </div>
+                    
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn-secondary" onclick="closeImportPopup()">Close</button>
+        </div>
+    `;
+
+    document.body.appendChild(__importPopup);
+
+    __importOutsideListener = (ev) => {
+        if (!__importPopup) return;
+        if (!__importPopup.contains(ev.target)) {
+            closeImportPopup();
+        }
+    };
+    document.addEventListener('mousedown', __importOutsideListener);
+}
+
+function closeImportPopup() {
+    if (__importPopup) {
+        __importPopup.remove();
+        __importPopup = null;
+    }
+    if (__importOutsideListener) {
+        document.removeEventListener('mousedown', __importOutsideListener);
+        __importOutsideListener = null;
+    }
 }
 
 segmentsInput.addEventListener('pointerdown', (e) => {
@@ -1842,8 +1937,7 @@ function initialize() {
     // Positioniere das 'Weitere Einstellungen' Panel an der richtigen Stelle
     syncOtherControlsPanel();
 
-    undoStack.length = 0;
-    redoStack.length = 0;
+    resetUndoRedo();
 }
 
 // Verschiebe das "other-controls-panel" ins linke Sidebar- bzw. zurück ans Ende des Grid für Mobile. Dadurch erscheint es direkt unter
@@ -1946,12 +2040,13 @@ window.copyLayer = copyLayer;
 window.setLayerOpacity = setLayerOpacity;
 window.toggleLayerVisibility = toggleLayerVisibility;
 window.clearDrawing = clearDrawing;
+window.loadProjectFromBrowser = loadProjectFromBrowser;
 window.importProject = importProject;
 window.openExportPopup = openExportPopup;
+window.saveProjectInBrowser = saveProjectInBrowser;
 window.exportAsJSON = exportAsJSON;
 window.exportAsPNG = exportAsPNG;
 window.exportLayersAsPNG = exportLayersAsPNG;
-window.exportLayersAsPNGs = exportLayersAsPNGs;
 window.setTool = setTool;
 window.undo = undo;
 window.redo = redo;
