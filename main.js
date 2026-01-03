@@ -662,7 +662,6 @@ function moveLayer(fromIndex, toIndex) {
         currentLayerIndex++;
     }
 
-    saveState();
     updateLayersPanel();
     updateCanvasAndPreview();
 }
