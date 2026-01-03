@@ -2032,22 +2032,22 @@ if (mq.addEventListener) {
     mq.addEventListener(() => syncOtherControlsPanel());
 }
 
-// Exponierte Funktionen (für onclicks)
-window.addLayer = addLayer;
-window.deleteLayer = deleteLayer;
-window.copyLayer = copyLayer;
-window.setLayerOpacity = setLayerOpacity;
-window.toggleLayerVisibility = toggleLayerVisibility;
-window.clearDrawing = clearDrawing;
-window.loadProjectFromBrowser = loadProjectFromBrowser;
-window.importProject = importProject;
-window.openExportPopup = openExportPopup;
-window.saveProjectInBrowser = saveProjectInBrowser;
-window.exportAsJSON = exportAsJSON;
-window.exportAsPNG = exportAsPNG;
-window.exportLayersAsPNG = exportLayersAsPNG;
-window.setTool = setTool;
-window.undo = undo;
-window.redo = redo;
-
-initialize();
+export {
+    initialize,
+    addLayer,
+    deleteLayer,
+    copyLayer,
+    setLayerOpacity,
+    toggleLayerVisibility,
+    clearDrawing,
+    loadProjectFromBrowser,
+    importProject,
+    openExportPopup,
+    saveProjectInBrowser,
+    exportAsJSON,
+    exportAsPNG,
+    exportLayersAsPNG,
+    setTool,
+    undo,
+    redo
+};
