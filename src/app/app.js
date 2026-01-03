@@ -1,4 +1,8 @@
-﻿const drawingCanvas = document.getElementById('drawingCanvas');
+﻿import * as Segment from "../canvas/segmentGeometry.js";
+import * as Color from "../utils/color.js"
+import * as Transform from "../canvas/transform.js"
+
+const drawingCanvas = document.getElementById('drawingCanvas');
 const previewCanvas = document.getElementById('previewCanvas');
 let previewCtx = previewCanvas.getContext('2d');
 
@@ -24,6 +28,7 @@ let panStartX = 0;
 let panStartY = 0;
 let panOriginOffsetX = 0;
 let panOriginOffsetY = 0;
+const panClampToleranz = 200;
 
 let isDrawing = false;
 let lastX = 0;
@@ -193,22 +198,6 @@ function updateTransformStyle() {
     }
 }
 
-function screenToCanvasCoords(clientX, clientY) {
-    const rect = drawingCanvas.getBoundingClientRect();
-
-    // CSS px -> canvas internal px
-    const scaleX = drawingCanvas.width / rect.width;
-    const scaleY = drawingCanvas.height / rect.height;
-
-    const cssX = clientX - rect.left;
-    const cssY = clientY - rect.top;
-
-    const x = cssX * scaleX;
-    const y = cssY * scaleY;
-
-    return { x, y };
-}
-
 // Ensure preview canvas internal buffer matches displayed size (HiDPI aware)
 function ensurePreviewBuffer() {
     if (!previewCanvas) return;
@@ -239,7 +228,7 @@ function updatePreview() {
     const displayW = previewCanvas.width / dpr;
     const displayH = previewCanvas.height / dpr;
 
-    const info = getSegmentInfo();
+    const info = Segment.getInfo(drawingCanvas.width, drawingCanvas.height, segmentsInput.value, segOffX, segOffY, SEGMENT_RADIUS_FACTOR);
     if (!info) return;
 
     const fullDestW = displayW;
@@ -264,7 +253,7 @@ function updatePreview() {
     const dispRadiusFinal = info.radius * scale;
     const anglePerSegment = info.anglePerSegment;
     const startAngle = info.startAngle;
-    
+
     previewCtx.save();
     previewCtx.clearRect(0, 0, displayW, displayH);
     previewCtx.fillStyle = canvasBgColor;
@@ -345,7 +334,7 @@ function updateCanvasAndPreview() {
 
 // Draw the segment guide overlay
 function drawSegmentGuideOverlay() {
-    const info = getSegmentInfo();
+    const info = Segment.getInfo(drawingCanvas.width, drawingCanvas.height, segmentsInput.value, segOffX, segOffY, SEGMENT_RADIUS_FACTOR);
 
     const ctx = drawingCanvas.getContext('2d');
     ctx.save();
@@ -391,13 +380,13 @@ function addLayer(name = null, opacity = 0.5, visible = true, color = null, canv
     if (!color) {
         if (layers.length === 0) {
             const hslColor = `hsl(${LAYER_HUE_START}, 100%, 50%)`;
-            layer.color = hslToHex(hslColor);
+            layer.color = Color.hslToHex(hslColor);
         } else {
             const lastColor = layers[layers.length - 1].color;
-            const hsl = hexToHsl(lastColor);
+            const hsl = Color.hexToHsl(lastColor);
             const newHue = (hsl.h - LAYER_HUE_STEP + 360) % 360;
             const newColor = `hsl(${newHue}, ${hsl.s}%, ${hsl.l}%)`;
-            layer.color = hslToHex(newColor);
+            layer.color = Color.hslToHex(newColor);
         }
     } else {
         layer.color = color;
@@ -405,7 +394,8 @@ function addLayer(name = null, opacity = 0.5, visible = true, color = null, canv
 
     if (!canvas) {
         layer.ctx.save();
-        applySegmentClip(layer.ctx);
+        const info = Segment.getInfo(drawingCanvas.width, drawingCanvas.height, segmentsInput.value, segOffX, segOffY, SEGMENT_RADIUS_FACTOR);
+        Segment.applyClip(layer.ctx, info)
         layer.ctx.fillStyle = layer.color;
         layer.ctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
         layer.ctx.restore();
@@ -466,10 +456,10 @@ function copyLayer() {
     newLayer.visible = src.visible;
 
     const lastColor = layers[currentLayerIndex].color;
-    const hsl = hexToHsl(lastColor);
+    const hsl = Color.hexToHsl(lastColor);
     const newHue = (hsl.h - LAYER_HUE_STEP + 360) % 360;
     const newColor = `hsl(${newHue}, ${hsl.s}%, ${hsl.l}%)`;
-    newLayer.color = hslToHex(newColor);
+    newLayer.color = Color.hslToHex(newColor);
 
     newLayer.ctx.clearRect(0, 0, newLayer.canvas.width, newLayer.canvas.height);
     newLayer.ctx.drawImage(
@@ -782,7 +772,8 @@ function resetAfterSegmentChange() {
         const layerCtx = layer.ctx;
         layerCtx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
         layerCtx.save();
-        applySegmentClip(layerCtx);
+        const info = Segment.getInfo(drawingCanvas.width, drawingCanvas.height, segmentsInput.value, segOffX, segOffY, SEGMENT_RADIUS_FACTOR);
+        Segment.applyClip(layerCtx, info);
         layerCtx.fillStyle = layer.color;
         layerCtx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
         layerCtx.restore();
@@ -898,7 +889,7 @@ function saveState() {
 }
 
 function getCurrentState() {
-    const state = { 
+    const state = {
         segments: segmentsInput.value,
         layers: layers.map(layer => ({
             name: layer.name,
@@ -958,146 +949,6 @@ function resetUndoRedo() {
     redoStack.length = 0;
 }
 
-function getSegmentInfo() {
-    const segments = Math.max(1, parseInt(segmentsInput?.value || '12', 10));
-    const cx = drawingCanvas.width / 2 + (segOffX || 0);
-    const cy = drawingCanvas.height / 2 + (segOffY || 0);
-    const radius = Math.min(drawingCanvas.width, drawingCanvas.height) * 0.5 * SEGMENT_RADIUS_FACTOR;
-    const anglePerSegment = (Math.PI * 2) / segments;
-    const startAngle = -Math.PI / 2;
-    return { segments, cx, cy, radius, anglePerSegment, startAngle };
-}
-
-function applySegmentClip(ctx) {
-    const info = getSegmentInfo();
-    ctx.beginPath();
-    ctx.moveTo(info.cx, info.cy);
-    ctx.lineTo(
-        info.cx + info.radius * Math.cos(info.startAngle),
-        info.cy + info.radius * Math.sin(info.startAngle)
-    );
-    ctx.arc(info.cx, info.cy, info.radius, info.startAngle, info.startAngle + info.anglePerSegment);
-    ctx.closePath();
-    ctx.clip();
-}
-
-function isPointInSegment(x, y) {
-    const info = getSegmentInfo();
-    const dx = x - info.cx;
-    const dy = y - info.cy;
-    const dist = Math.hypot(dx, dy);
-    if (dist > info.radius) return false;
-
-    let angle = Math.atan2(dy, dx);
-    let rel = angle - info.startAngle;
-    while (rel < 0) rel += Math.PI * 2;
-    while (rel >= Math.PI * 2) rel -= Math.PI * 2;
-
-    return rel >= 0 && rel <= info.anglePerSegment;
-}
-
-function hslToHex(hsl) {
-    const hslRegex = /hsl\((\d+),\s*(\d+)%\,\s*(\d+)%\)/i;
-    const match = hsl.match(hslRegex);
-    if (!match) return '#2d7a8f';
-    const h = parseInt(match[1]) / 360;
-    const s = parseInt(match[2]) / 100;
-    const l = parseInt(match[3]) / 100;
-    let r, g, b;
-    if (s === 0) r = g = b = l;
-    else {
-        const hue2rgb = (p, q, t) => {
-            if (t < 0) t += 1;
-            if (t > 1) t -= 1;
-            if (t < 1 / 6) return p + (q - p) * 6 * t;
-            if (t < 1 / 2) return q;
-            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-            return p;
-        };
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        const p = 2 * l - q;
-        r = hue2rgb(p, q, h + 1 / 3);
-        g = hue2rgb(p, q, h);
-        b = hue2rgb(p, q, h - 1 / 3);
-    }
-    return '#' + Math.round(r * 255).toString(16).padStart(2, '0') +
-        Math.round(g * 255).toString(16).padStart(2, '0') +
-        Math.round(b * 255).toString(16).padStart(2, '0');
-}
-
-function hexToHsl(hex) {
-    var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    var r = parseInt(result[1], 16);
-    var g = parseInt(result[2], 16);
-    var b = parseInt(result[3], 16);
-    var cssString = '';
-    r /= 255, g /= 255, b /= 255;
-    var max = Math.max(r, g, b), min = Math.min(r, g, b);
-    var h, s, l = (max + min) / 2;
-    if (max == min) {
-        h = s = 0; // achromatic
-    } else {
-        var d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        switch (max) {
-            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-            case g: h = (b - r) / d + 2; break;
-            case b: h = (r - g) / d + 4; break;
-        }
-        h /= 6;
-    }
-
-    h = Math.round(h * 360);
-    s = Math.round(s * 100);
-    l = Math.round(l * 100);
-
-    return { h, s, l };
-}
-
-function clampPan() {
-    const viewport = document.getElementById('canvasViewport');
-    const viewW = viewport.clientWidth;
-    const viewH = viewport.clientHeight;
-
-    const canvasRect = drawingCanvas.getBoundingClientRect();
-    const canvasW = canvasRect.width;
-    const canvasH = canvasRect.height;
-
-    const TOLERANCE = 200;
-
-    if (canvasW <= viewW) {
-        offsetX = (viewW - canvasW) / 2;
-    } else {
-        const minX = (viewW - canvasW);
-        const maxX = 0;
-        offsetX = softClamp(offsetX, minX, maxX, TOLERANCE);
-    }
-
-    if (canvasH <= viewH) {
-        offsetY = (viewH - canvasH) / 2;
-    } else {
-        const minY = viewH - canvasH;
-        const maxY = 0;
-        offsetY = softClamp(offsetY, minY, maxY, TOLERANCE);
-    }
-}
-
-function softClamp(value, min, max, tolerance) {
-    if (value < min) {
-        const d = min - value;
-        if (d > tolerance) return min - tolerance;
-        return min - d;
-    }
-
-    if (value > max) {
-        const d = value - max;
-        if (d > tolerance) return max + tolerance;
-        return max + d;
-    }
-
-    return value;
-}
-
 // --- Drawing event handlers ---
 drawingCanvas.addEventListener('mousedown', (e) => {
     // Middle mouse -> start panning
@@ -1119,7 +970,7 @@ drawingCanvas.addEventListener('mousedown', (e) => {
     saveState();
     isDrawing = true;
 
-    const p = screenToCanvasCoords(e.clientX, e.clientY);
+    const p = Transform.screenToCanvasCoords(drawingCanvas, e.clientX, e.clientY);
     lastX = p.x;
     lastY = p.y;
     startX = lastX;
@@ -1141,14 +992,18 @@ window.addEventListener('mousemove', (e) => {
         const dy = e.clientY - panStartY;
         offsetX = panOriginOffsetX + dx;
         offsetY = panOriginOffsetY + dy;
-        clampPan();
+
+        const viewport = document.getElementById('canvasViewport');
+        const clampedPan = Transform.clampPan(viewport, drawingCanvas, offsetX, offsetY, panClampToleranz);
+        offsetX = clampedPan.offsetX;
+        offsetY = clampedPan.offsetY;
         updateTransformStyle();
         return;
     }
 
     if (!isDrawing) return;
 
-    const p = screenToCanvasCoords(e.clientX, e.clientY);
+    const p = Transform.screenToCanvasCoords(drawingCanvas, e.clientX, e.clientY);
     const x = p.x;
     const y = p.y;
 
@@ -1156,7 +1011,8 @@ window.addEventListener('mousemove', (e) => {
     const layerCtx = currentLayer.ctx;
 
     layerCtx.save();
-    applySegmentClip(layerCtx);
+    const info = Segment.getInfo(drawingCanvas.width, drawingCanvas.height, segmentsInput.value, segOffX, segOffY, SEGMENT_RADIUS_FACTOR);
+    Segment.applyClip(layerCtx, info);
 
     if (currentTool === 'brush' || currentTool === 'eraser') {
         if (currentTool === 'eraser') {
@@ -1233,7 +1089,7 @@ drawingCanvas.addEventListener('touchstart', (e) => {
         saveState();
         isDrawing = true;
         const touch = touches[0];
-        const p = screenToCanvasCoords(touch.clientX, touch.clientY);
+        const p = Transform.screenToCanvasCoords(drawingCanvas, touch.clientX, touch.clientY);
         lastX = p.x;
         lastY = p.y;
         startX = lastX;
@@ -1310,7 +1166,10 @@ drawingCanvas.addEventListener('touchmove', (e) => {
         offsetY = pinchData.panOriginOffsetY + dyCenter - deltaScale * pinchData.startPy;
 
         scale = newScale;
-        clampPan();
+        const viewport = document.getElementById('canvasViewport');
+        const clampedPan = Transform.clampPan(viewport, drawingCanvas, offsetX, offsetY, panClampToleranz);
+        offsetX = clampedPan.offsetX;
+        offsetY = clampedPan.offsetY;
         updateTransformStyle();
         return;
     }
@@ -1318,7 +1177,7 @@ drawingCanvas.addEventListener('touchmove', (e) => {
     // if not pinching, maybe single touch drawing
     if (touches.length === 1 && isDrawing) {
         const touch = touches[0];
-        const p = screenToCanvasCoords(touch.clientX, touch.clientY);
+        const p = Transform.screenToCanvasCoords(drawingCanvas, touch.clientX, touch.clientY);
         const x = p.x;
         const y = p.y;
 
@@ -1326,7 +1185,8 @@ drawingCanvas.addEventListener('touchmove', (e) => {
         const layerCtx = currentLayer.ctx;
 
         layerCtx.save();
-        applySegmentClip(layerCtx);
+        const info = Segment.getInfo(drawingCanvas.width, drawingCanvas.height, segmentsInput.value, segOffX, segOffY, SEGMENT_RADIUS_FACTOR);
+        Segment.applyClip(layerCtx, info);
 
         if (currentTool === 'brush' || currentTool === 'eraser') {
             if (currentTool === 'eraser') {
@@ -1388,7 +1248,11 @@ drawingCanvas.addEventListener('touchend', (e) => {
         if (touches.length < 2) {
             isPinching = false;
             pinchData = null;
-            clampPan();
+
+            const viewport = document.getElementById('canvasViewport');
+            const clampedPan = Transform.clampPan(viewport, drawingCanvas, offsetX, offsetY, panClampToleranz);
+            offsetX = clampedPan.offsetX;
+            offsetY = clampedPan.offsetY;
             updateTransformStyle();
         }
         // if still 2+ touches remain, keep pinching (handled by touchmove)
@@ -1419,7 +1283,11 @@ drawingCanvas.addEventListener('wheel', (e) => {
     offsetX = offsetX - (newScale - scale) * px;
     offsetY = offsetY - (newScale - scale) * py;
     scale = newScale;
-    clampPan();
+
+    const viewport = document.getElementById('canvasViewport');
+    const clampedPan = Transform.clampPan(viewport, drawingCanvas, offsetX, offsetY, panClampToleranz);
+    offsetX = clampedPan.offsetX;
+    offsetY = clampedPan.offsetY;
     updateTransformStyle();
 }, { passive: false });
 
@@ -1479,7 +1347,7 @@ function floodFill(x, y, fillColor) {
     const ALPHA_THRESHOLD = 200; // anti-alias tolerance
     if (startAlpha > ALPHA_THRESHOLD) return;
 
-    const [fillR, fillG, fillB] = hexToRgb(fillColor);
+    const [fillR, fillG, fillB] = Color.hexToRgb(fillColor);
     const fillA = 255;
 
     saveState();
@@ -1501,7 +1369,8 @@ function floodFill(x, y, fillColor) {
         const alpha = data[i + 3];
 
         if (alpha > ALPHA_THRESHOLD) continue;
-        if (!isPointInSegment(cx, cy)) continue;
+        const info = Segment.getInfo(drawingCanvas.width, drawingCanvas.height, segmentsInput.value, segOffX, segOffY, SEGMENT_RADIUS_FACTOR);
+        if (!Segment.isPointInSegment(cx, cy, info)) continue;
 
         data[i] = fillR;
         data[i + 1] = fillG;
@@ -1521,18 +1390,14 @@ function floodFill(x, y, fillColor) {
     updateCanvasAndPreview();
 }
 
-function hexToRgb(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16), 255] : [0, 0, 0, 255];
-}
-
 function clearDrawing() {
     saveState();
     const currentLayer = getCurrentLayer();
     const layerCtx = currentLayer.ctx;
     layerCtx.clearRect(0, 0, currentLayer.canvas.width, currentLayer.canvas.height);
     layerCtx.save();
-    applySegmentClip(layerCtx);
+    const info = Segment.getInfo(drawingCanvas.width, drawingCanvas.height, segmentsInput.value, segOffX, segOffY, SEGMENT_RADIUS_FACTOR);
+    Segment.applyClip(layerCtx, info);
     layerCtx.fillStyle = currentLayer.color;
     layerCtx.fillRect(0, 0, currentLayer.canvas.width, currentLayer.canvas.height);
     layerCtx.restore();
