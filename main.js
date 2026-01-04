@@ -10,6 +10,7 @@ const bgColorBtn = document.getElementById('bg-color-btn');
 const showGuidesInput = document.getElementById('showGuides');
 const showOnlySelectedInput = document.getElementById('showOnlySelected');
 const mq = window.matchMedia('(max-width: 980px)');
+const autoDeleteDetachedInput = document.getElementById('autoDeleteDetached');
 
 const undoStack = [];
 const redoStack = [];
@@ -36,6 +37,7 @@ let currentTool = 'eraser';
 let startX = 0;
 let startY = 0;
 let previewImageData = null;
+let autoDeleteDetached = false;
 
 let showGuides = true;
 
@@ -1160,6 +1162,84 @@ function floodFill(x, y, fillColor) {
     updateCanvasAndPreview();
 }
 
+function cutDetachedAreas() {
+    const layer = getCurrentLayer();
+    if (!layer) return;
+
+    const w = drawingCanvas.width;
+    const h = drawingCanvas.height;
+    const img = layer.ctx.getImageData(0, 0, w, h);
+    const data = img.data;
+
+    const ALPHA_T = 10; // ähnlich deiner floodFill-Toleranz
+    const visited = new Uint8Array(w * h);
+
+    let largestComp = null; // {count, pixels: Uint32Array/Array}
+    const comps = [];       // speichert alle komponenten pixel-indizes
+
+    const stack = [];
+
+    function alphaAt(idx) {
+        return data[idx * 4 + 3];
+    }
+
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const idx = y * w + x;
+            if (visited[idx]) continue;
+            if (alphaAt(idx) < ALPHA_T) continue;
+
+            // neue Komponente floodfill
+            let count = 0;
+            const pixels = []; // idx list
+
+            stack.length = 0;
+            stack.push(idx);
+            visited[idx] = 1;
+
+            while (stack.length) {
+                const cur = stack.pop();
+                pixels.push(cur);
+                count++;
+
+                const cx = cur % w;
+                const cy = (cur / w) | 0;
+
+                // 4-neighborhood
+                const n1 = cx > 0 ? cur - 1 : -1;
+                const n2 = cx < w - 1 ? cur + 1 : -1;
+                const n3 = cy > 0 ? cur - w : -1;
+                const n4 = cy < h - 1 ? cur + w : -1;
+
+                if (n1 !== -1 && !visited[n1] && alphaAt(n1) >= ALPHA_T) { visited[n1] = 1; stack.push(n1); }
+                if (n2 !== -1 && !visited[n2] && alphaAt(n2) >= ALPHA_T) { visited[n2] = 1; stack.push(n2); }
+                if (n3 !== -1 && !visited[n3] && alphaAt(n3) >= ALPHA_T) { visited[n3] = 1; stack.push(n3); }
+                if (n4 !== -1 && !visited[n4] && alphaAt(n4) >= ALPHA_T) { visited[n4] = 1; stack.push(n4); }
+            }
+
+            const comp = { count, pixels };
+            comps.push(comp);
+            if (!largestComp || comp.count > largestComp.count) largestComp = comp;
+        }
+    }
+
+    // 0 oder 1 Komponente => nichts abgetrennt
+    if (!largestComp || comps.length <= 1) return;
+
+    // alle außer der größten löschen
+    // optional: saveState() hier, aber du machst saveState bereits am gesture-start
+    for (const comp of comps) {
+        if (comp === largestComp) continue;
+        for (const p of comp.pixels) {
+            const i = p * 4;
+            data[i + 3] = 0; // alpha 0 => gelöscht
+            // RGB muss nicht zwingend genullt werden
+        }
+    }
+
+    layer.ctx.putImageData(img, 0, 0);
+}
+
 function hexToRgb(hex) {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16), 255] : [0, 0, 0, 255];
@@ -1615,6 +1695,11 @@ function syncUIStateFromDOM() {
         showOnlySelected = showOnlySelectedCheckbox.checked;
     }
 
+    const autoDeleteDetachedCheckbox = document.getElementById('autoDeleteDetached');
+    if (autoDeleteDetachedCheckbox) {
+        autoDeleteDetached = autoDeleteDetachedCheckbox.checked;
+    }
+
     updateCanvasAndPreview();
 }
 
@@ -1676,13 +1761,13 @@ window.addEventListener('mousemove', (e) => {
     const layerCtx = currentLayer.ctx;
 
     layerCtx.save();
-    applySegmentClip(layerCtx);
 
     if (currentTool === 'brush' || currentTool === 'eraser') {
         if (currentTool === 'eraser') {
             layerCtx.globalCompositeOperation = 'destination-out';
             layerCtx.strokeStyle = 'rgba(0,0,0,1)';
         } else {
+            applySegmentClip(layerCtx);
             layerCtx.globalCompositeOperation = 'source-over';
             layerCtx.strokeStyle = layers[currentLayerIndex].color;
         }
@@ -1736,6 +1821,12 @@ window.addEventListener('mouseup', (e) => {
         updateTransformStyle();
         return;
     }
+
+    if (isDrawing && autoDeleteDetached && (currentTool === 'eraser' || currentTool === 'line')) {
+        cutDetachedAreas();
+        updateCanvasAndPreview();
+    }
+
     isDrawing = false;
 });
 
@@ -1873,11 +1964,13 @@ drawingCanvas.addEventListener('touchmove', (e) => {
 
             layerCtx.restore();
             updateCanvasAndPreview();
-        } else if (currentTool === 'line' || currentTool === 'circle' || currentTool === 'rectangle') {
+        } else if (currentTool === 'line'/* || currentTool === 'circle' || currentTool === 'rectangle'*/) {
             layerCtx.putImageData(previewImageData, 0, 0);
 
-            layerCtx.globalCompositeOperation = 'source-over';
-            layerCtx.strokeStyle = layers[currentLayerIndex].color;
+            // layerCtx.globalCompositeOperation = 'source-over';
+            // layerCtx.strokeStyle = layers[currentLayerIndex].color;
+            layerCtx.globalCompositeOperation = 'destination-out';
+            layerCtx.strokeStyle = 'rgba(0,0,0,1)';
             layerCtx.lineWidth = parseInt(brushSizeInput.value);
             layerCtx.lineCap = 'round';
 
@@ -1886,14 +1979,14 @@ drawingCanvas.addEventListener('touchmove', (e) => {
                 layerCtx.moveTo(startX, startY);
                 layerCtx.lineTo(x, y);
                 layerCtx.stroke();
-            } else if (currentTool === 'circle') {
-                const radius = Math.hypot(x - startX, y - startY);
-                layerCtx.beginPath();
-                layerCtx.arc(startX, startY, radius, 0, Math.PI * 2);
-                layerCtx.stroke();
-            } else if (currentTool === 'rectangle') {
-                layerCtx.strokeRect(startX, startY, x - startX, y - startY);
-            }
+            } //else if (currentTool === 'circle') {
+            //     const radius = Math.hypot(x - startX, y - startY);
+            //     layerCtx.beginPath();
+            //     layerCtx.arc(startX, startY, radius, 0, Math.PI * 2);
+            //     layerCtx.stroke();
+            // } else if (currentTool === 'rectangle') {
+            //     layerCtx.strokeRect(startX, startY, x - startX, y - startY);
+            // }
 
             layerCtx.restore();
             updateCanvasAndPreview();
@@ -1915,6 +2008,11 @@ drawingCanvas.addEventListener('touchend', (e) => {
         }
         // if still 2+ touches remain, keep pinching (handled by touchmove)
         return;
+    }
+
+    if (isDrawing && autoDeleteDetached && (currentTool === 'eraser' || currentTool === 'line')) {
+        cutDetachedAreas();
+        updateCanvasAndPreview();
     }
 
     // if single-finger ended -> stop drawing
