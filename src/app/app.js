@@ -1,6 +1,8 @@
 ﻿import * as Segment from "../canvas/segmentGeometry.js";
 import * as Color from "../utils/color.js"
 import * as Transform from "../canvas/transform.js"
+import Layer from "../layers/layerModel.js"
+import { createLayerStore } from "../layers/layerStore.js";
 
 const drawingCanvas = document.getElementById('drawingCanvas');
 const previewCanvas = document.getElementById('previewCanvas');
@@ -44,9 +46,7 @@ let showGuides = true;
 let isPinching = false;
 let pinchData = null; // { startDist, initialScale, panOriginOffsetX, panOriginOffsetY, startCenterClientX, startCenterClientY }
 
-// Layers management
-let layers = [];
-let currentLayerIndex = 0;
+let layerStore;
 
 // Segment positioning / size factor (Segment slightly smaller and centered)
 let segOffX = -200;
@@ -80,19 +80,6 @@ let tempSegments = 0;
 const IDB_DB_NAME = 'transparent_project_db';
 const IDB_STORE = 'kv';
 const IDB_KEY_LAST = 'lastProject_v1';
-
-class Layer {
-    constructor(name) {
-        this.name = name;
-        this.opacity = 0.5;
-        this.visible = true;
-        this.color = '#2d7a8f';
-        this.canvas = document.createElement('canvas');
-        this.canvas.width = drawingCanvas.width;
-        this.canvas.height = drawingCanvas.height;
-        this.ctx = this.canvas.getContext('2d');
-    }
-}
 
 // --- Transform helpers ---
 drawingCanvas.style.transformOrigin = '0 0';
@@ -1788,9 +1775,39 @@ function initialize() {
     adjustCanvasViewportSize();
     resizeDrawingCanvas();
 
-    layers = [];
-    addLayer('Layer 1');
-    currentLayerIndex = 0;
+    layerStore = createLayerStore({
+        canvasWidth: drawingCanvas.width,
+        canvasHeight: drawingCanvas.height,
+
+        layerHueStart: LAYER_HUE_START,
+        layerHueStep: LAYER_HUE_STEP,
+
+        // Hook: vor jeder Layer-Änderung einen Undo-State speichern
+        saveState,
+
+        // Hook: UI neu bauen
+        onChange: () => updateLayersPanel(),
+
+        // Hook: Canvas + Preview neu rendern
+        onRender: () => updateCanvasAndPreview(),
+
+        // optional: so wie du aktuell beim Layer-Anlegen clip+fill machst
+        applySegmentClip: (ctx, info) => Segment.applyClip(ctx, info),
+        getSegmentInfo: () =>
+            Segment.getInfo(
+                drawingCanvas.width,
+                drawingCanvas.height,
+                segmentsInput.value,
+                segOffX,
+                segOffY,
+                SEGMENT_RADIUS_FACTOR
+            )
+    });
+
+    // initialer Layer
+    layerStore.addLayer({ name: "Layer 1", dontSaveState: true });
+    layerStore.selectLayer(0);
+    
     updateLayersPanel();
     updateCanvasAndPreview();
     updateTransformStyle();
