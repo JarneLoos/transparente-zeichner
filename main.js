@@ -271,7 +271,7 @@ function updatePreview() {
     const dispRadiusFinal = info.radius * scale;
     const anglePerSegment = info.anglePerSegment;
     const startAngle = info.startAngle;
-    
+
     previewCtx.save();
     previewCtx.clearRect(0, 0, displayW, displayH);
     previewCtx.fillStyle = canvasBgColor;
@@ -902,7 +902,7 @@ function saveState() {
 }
 
 function getCurrentState() {
-    const state = { 
+    const state = {
         segments: segmentsInput.value,
         layers: layers.map(layer => ({
             name: layer.name,
@@ -1701,11 +1701,13 @@ window.addEventListener('mousemove', (e) => {
 
         layerCtx.restore();
         updateCanvasAndPreview();
-    } else if (currentTool === 'line' || currentTool === 'circle' || currentTool === 'rectangle') {
+    } else if (currentTool === 'line'/* || currentTool === 'circle' || currentTool === 'rectangle'*/) {
         layerCtx.putImageData(previewImageData, 0, 0);
 
-        layerCtx.globalCompositeOperation = 'source-over';
-        layerCtx.strokeStyle = layers[currentLayerIndex].color;
+        // layerCtx.globalCompositeOperation = 'source-over';
+        // layerCtx.strokeStyle = layers[currentLayerIndex].color;
+        layerCtx.globalCompositeOperation = 'destination-out';
+        layerCtx.strokeStyle = 'rgba(0,0,0,1)';
         layerCtx.lineWidth = parseInt(brushSizeInput.value);
         layerCtx.lineCap = 'round';
 
@@ -1714,14 +1716,14 @@ window.addEventListener('mousemove', (e) => {
             layerCtx.moveTo(startX, startY);
             layerCtx.lineTo(x, y);
             layerCtx.stroke();
-        } else if (currentTool === 'circle') {
-            const radius = Math.hypot(x - startX, y - startY);
-            layerCtx.beginPath();
-            layerCtx.arc(startX, startY, radius, 0, Math.PI * 2);
-            layerCtx.stroke();
-        } else if (currentTool === 'rectangle') {
-            layerCtx.strokeRect(startX, startY, x - startX, y - startY);
-        }
+        } //else if (currentTool === 'circle') {
+        //     const radius = Math.hypot(x - startX, y - startY);
+        //     layerCtx.beginPath();
+        //     layerCtx.arc(startX, startY, radius, 0, Math.PI * 2);
+        //     layerCtx.stroke();
+        // } else if (currentTool === 'rectangle') {
+        //     layerCtx.strokeRect(startX, startY, x - startX, y - startY);
+        // }
 
         layerCtx.restore();
         updateCanvasAndPreview();
