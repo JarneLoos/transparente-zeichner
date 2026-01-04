@@ -6,6 +6,10 @@ const segmentsInput = document.getElementById('segments');
 const brushSizeInput = document.getElementById('brushSize');
 const segmentValue = document.getElementById('segmentValue');
 const brushValue = document.getElementById('brushValue');
+const bgColorBtn = document.getElementById('bg-color-btn');
+const showGuidesInput = document.getElementById('showGuides');
+const showOnlySelectedInput = document.getElementById('showOnlySelected');
+const mq = window.matchMedia('(max-width: 980px)');
 
 const undoStack = [];
 const redoStack = [];
@@ -630,8 +634,6 @@ function selectLayer(index) {
 }
 
 function setLayerOpacity(index, value) {
-    saveState();
-
     layers[index].opacity = value / 100;
     updateCanvasAndPreview();
 }
@@ -1100,371 +1102,6 @@ function softClamp(value, min, max, tolerance) {
     return value;
 }
 
-// --- Drawing event handlers ---
-drawingCanvas.addEventListener('mousedown', (e) => {
-    // Middle mouse -> start panning
-    if (e.button === 1) {
-        isPanning = true;
-        panStartX = e.clientX;
-        panStartY = e.clientY;
-        panOriginOffsetX = offsetX;
-        panOriginOffsetY = offsetY;
-        updateTransformStyle();
-        // prevent default to avoid autoscroll
-        e.preventDefault();
-        return;
-    }
-
-    // Left click -> drawing
-    if (e.button !== 0) return;
-
-    saveState();
-    isDrawing = true;
-
-    const p = screenToCanvasCoords(e.clientX, e.clientY);
-    lastX = p.x;
-    lastY = p.y;
-    startX = lastX;
-    startY = lastY;
-
-    const currentLayer = getCurrentLayer();
-    previewImageData = currentLayer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
-
-    if (currentTool === 'bucket') {
-        floodFill(Math.round(lastX), Math.round(lastY), layers[currentLayerIndex].color);
-        isDrawing = false;
-    }
-});
-
-// Mouse move: either pan or draw
-window.addEventListener('mousemove', (e) => {
-    if (isPanning) {
-        const dx = e.clientX - panStartX;
-        const dy = e.clientY - panStartY;
-        offsetX = panOriginOffsetX + dx;
-        offsetY = panOriginOffsetY + dy;
-        clampPan();
-        updateTransformStyle();
-        return;
-    }
-
-    if (!isDrawing) return;
-
-    const p = screenToCanvasCoords(e.clientX, e.clientY);
-    const x = p.x;
-    const y = p.y;
-
-    const currentLayer = getCurrentLayer();
-    const layerCtx = currentLayer.ctx;
-
-    layerCtx.save();
-    applySegmentClip(layerCtx);
-
-    if (currentTool === 'brush' || currentTool === 'eraser') {
-        if (currentTool === 'eraser') {
-            layerCtx.globalCompositeOperation = 'destination-out';
-            layerCtx.strokeStyle = 'rgba(0,0,0,1)';
-        } else {
-            layerCtx.globalCompositeOperation = 'source-over';
-            layerCtx.strokeStyle = layers[currentLayerIndex].color;
-        }
-
-        layerCtx.lineWidth = parseInt(brushSizeInput.value);
-        layerCtx.lineCap = 'round';
-        layerCtx.lineJoin = 'round';
-
-        layerCtx.beginPath();
-        layerCtx.moveTo(lastX, lastY);
-        layerCtx.lineTo(x, y);
-        layerCtx.stroke();
-
-        lastX = x;
-        lastY = y;
-
-        layerCtx.restore();
-        updateCanvasAndPreview();
-    } else if (currentTool === 'line' || currentTool === 'circle' || currentTool === 'rectangle') {
-        layerCtx.putImageData(previewImageData, 0, 0);
-
-        layerCtx.globalCompositeOperation = 'source-over';
-        layerCtx.strokeStyle = layers[currentLayerIndex].color;
-        layerCtx.lineWidth = parseInt(brushSizeInput.value);
-        layerCtx.lineCap = 'round';
-
-        if (currentTool === 'line') {
-            layerCtx.beginPath();
-            layerCtx.moveTo(startX, startY);
-            layerCtx.lineTo(x, y);
-            layerCtx.stroke();
-        } else if (currentTool === 'circle') {
-            const radius = Math.hypot(x - startX, y - startY);
-            layerCtx.beginPath();
-            layerCtx.arc(startX, startY, radius, 0, Math.PI * 2);
-            layerCtx.stroke();
-        } else if (currentTool === 'rectangle') {
-            layerCtx.strokeRect(startX, startY, x - startX, y - startY);
-        }
-
-        layerCtx.restore();
-        updateCanvasAndPreview();
-    }
-});
-
-window.addEventListener('mouseup', (e) => {
-    if (isPanning && e.button === 1) {
-        isPanning = false;
-        updateTransformStyle();
-        return;
-    }
-    isDrawing = false;
-});
-
-drawingCanvas.addEventListener('mouseleave', () => {
-    isDrawing = false;
-});
-
-// --- Touch events: single-finger drawing, two-finger pinch/pan ---
-drawingCanvas.addEventListener('touchstart', (e) => {
-    // prevent the browser default (scroll/zoom)
-    e.preventDefault();
-
-    const touches = e.touches;
-
-    if (touches.length === 1) {
-        // single-finger: drawing (like before)
-        saveState();
-        isDrawing = true;
-        const touch = touches[0];
-        const p = screenToCanvasCoords(touch.clientX, touch.clientY);
-        lastX = p.x;
-        lastY = p.y;
-        startX = lastX;
-        startY = lastY;
-        const currentLayer = getCurrentLayer();
-        previewImageData = currentLayer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
-
-        if (currentTool === 'bucket') {
-            floodFill(Math.round(lastX), Math.round(lastY), layers[currentLayerIndex].color);
-            isDrawing = false;
-        }
-        // ensure not in pinch mode
-        isPinching = false;
-        pinchData = null;
-    } else if (touches.length === 2) {
-        // two-finger: start pinch/zoom + pan
-        isDrawing = false; // stop any single-finger drawing
-        isPinching = true;
-
-        const t0 = touches[0];
-        const t1 = touches[1];
-
-        const startDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-        const centerClientX = (t0.clientX + t1.clientX) / 2;
-        const centerClientY = (t0.clientY + t1.clientY) / 2;
-
-        const rect = drawingCanvas.getBoundingClientRect();
-        // px = canvas-space coordinate (used later to keep point under midpoint stable)
-        const px = (centerClientX - rect.left) / scale;
-        const py = (centerClientY - rect.top) / scale;
-
-        pinchData = {
-            startDist,
-            initialScale: scale,
-            panOriginOffsetX: offsetX,
-            panOriginOffsetY: offsetY,
-            startCenterClientX: centerClientX,
-            startCenterClientY: centerClientY,
-            startPx: px,
-            startPy: py
-        };
-    } else {
-        // 3+ touches: ignore for now
-        isDrawing = false;
-    }
-}, { passive: false });
-
-drawingCanvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    const touches = e.touches;
-
-    if (isPinching && touches.length >= 2 && pinchData) {
-        // handle pinch + two-finger pan
-        const t0 = touches[0];
-        const t1 = touches[1];
-
-        const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
-        const centerClientX = (t0.clientX + t1.clientX) / 2;
-        const centerClientY = (t0.clientY + t1.clientY) / 2;
-
-        const scaleFactor = newDist / pinchData.startDist;
-        let newScale = pinchData.initialScale * scaleFactor;
-        newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
-
-        // movement of midpoint -> pan
-        const dxCenter = centerClientX - pinchData.startCenterClientX;
-        const dyCenter = centerClientY - pinchData.startCenterClientY;
-
-        // compute px/py relative to initial scale so the point under center stays stable
-        // (use startPx/startPy computed on pinchstart)
-        const deltaScale = newScale - pinchData.initialScale;
-
-        offsetX = pinchData.panOriginOffsetX + dxCenter - deltaScale * pinchData.startPx;
-        offsetY = pinchData.panOriginOffsetY + dyCenter - deltaScale * pinchData.startPy;
-
-        scale = newScale;
-        clampPan();
-        updateTransformStyle();
-        return;
-    }
-
-    // if not pinching, maybe single touch drawing
-    if (touches.length === 1 && isDrawing) {
-        const touch = touches[0];
-        const p = screenToCanvasCoords(touch.clientX, touch.clientY);
-        const x = p.x;
-        const y = p.y;
-
-        const currentLayer = getCurrentLayer();
-        const layerCtx = currentLayer.ctx;
-
-        layerCtx.save();
-        applySegmentClip(layerCtx);
-
-        if (currentTool === 'brush' || currentTool === 'eraser') {
-            if (currentTool === 'eraser') {
-                layerCtx.globalCompositeOperation = 'destination-out';
-                layerCtx.strokeStyle = 'rgba(0,0,0,1)';
-            } else {
-                layerCtx.globalCompositeOperation = 'source-over';
-                layerCtx.strokeStyle = layers[currentLayerIndex].color;
-            }
-
-            layerCtx.lineWidth = parseInt(brushSizeInput.value);
-            layerCtx.lineCap = 'round';
-            layerCtx.lineJoin = 'round';
-
-            layerCtx.beginPath();
-            layerCtx.moveTo(lastX, lastY);
-            layerCtx.lineTo(x, y);
-            layerCtx.stroke();
-
-            lastX = x;
-            lastY = y;
-
-            layerCtx.restore();
-            updateCanvasAndPreview();
-        } else if (currentTool === 'line' || currentTool === 'circle' || currentTool === 'rectangle') {
-            layerCtx.putImageData(previewImageData, 0, 0);
-
-            layerCtx.globalCompositeOperation = 'source-over';
-            layerCtx.strokeStyle = layers[currentLayerIndex].color;
-            layerCtx.lineWidth = parseInt(brushSizeInput.value);
-            layerCtx.lineCap = 'round';
-
-            if (currentTool === 'line') {
-                layerCtx.beginPath();
-                layerCtx.moveTo(startX, startY);
-                layerCtx.lineTo(x, y);
-                layerCtx.stroke();
-            } else if (currentTool === 'circle') {
-                const radius = Math.hypot(x - startX, y - startY);
-                layerCtx.beginPath();
-                layerCtx.arc(startX, startY, radius, 0, Math.PI * 2);
-                layerCtx.stroke();
-            } else if (currentTool === 'rectangle') {
-                layerCtx.strokeRect(startX, startY, x - startX, y - startY);
-            }
-
-            layerCtx.restore();
-            updateCanvasAndPreview();
-        }
-    }
-}, { passive: false });
-
-drawingCanvas.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    const touches = e.touches;
-
-    if (isPinching) {
-        // if fingers reduced below 2 -> stop pinching
-        if (touches.length < 2) {
-            isPinching = false;
-            pinchData = null;
-            clampPan();
-            updateTransformStyle();
-        }
-        // if still 2+ touches remain, keep pinching (handled by touchmove)
-        return;
-    }
-
-    // if single-finger ended -> stop drawing
-    if (isDrawing && touches.length === 0) {
-        isDrawing = false;
-    }
-});
-
-// Wheel: Zoom to mouse
-drawingCanvas.addEventListener('wheel', (e) => {
-    // only if pointer is over canvas
-    e.preventDefault();
-
-    const ZOOM_FACTOR = 1.12;
-    const delta = e.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
-
-    const rect = drawingCanvas.getBoundingClientRect();
-    // convert screen to canvas internal coords BEFORE change
-    const px = (e.clientX - rect.left) / scale;
-    const py = (e.clientY - rect.top) / scale;
-
-    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * delta));
-    // adjust offset so that (px,py) remains under the cursor
-    offsetX = offsetX - (newScale - scale) * px;
-    offsetY = offsetY - (newScale - scale) * py;
-    scale = newScale;
-    clampPan();
-    updateTransformStyle();
-}, { passive: false });
-
-
-// Keyboard shortcuts
-document.addEventListener('keydown', e => {
-    if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
-        e.preventDefault();
-        undo();
-    }
-
-    if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
-        e.preventDefault();
-        redo();
-    }
-});
-
-document.addEventListener('keydown', e => {
-    if (e.ctrlKey && e.key === 's') {
-        e.preventDefault();
-        saveProjectInBrowser();
-    }
-})
-
-// background color button listener
-const bgColorBtn = document.getElementById('bg-color-btn');
-bgColorBtn.addEventListener('click', () => {
-    cpLayerIndex = -1;
-    openColorPopup(canvasBgColor);
-});
-
-const showGuidesInput = document.getElementById('showGuides');
-showGuidesInput.addEventListener('change', function () {
-    showGuides = this.checked;
-    updateCanvasAndPreview();
-});
-
-const showOnlySelectedInput = document.getElementById('showOnlySelected');
-showOnlySelectedInput.addEventListener('change', function () {
-    showOnlySelected = this.checked;
-    renderDrawingCanvas();
-});
-
 // Flood Fill (Boundary fill with alpha-tolerance and segment check)
 function floodFill(x, y, fillColor) {
     const currentLayer = getCurrentLayer();
@@ -1543,7 +1180,6 @@ function clearDrawing() {
 }
 
 // Save / load
-
 function buildCurrentProjectObject() {
     return {
         schemaVersion: 1,
@@ -1881,28 +1517,6 @@ function closeImportPopup() {
     }
 }
 
-segmentsInput.addEventListener('pointerdown', (e) => {
-    tempSegments = e.target.value;
-});
-
-// Steuerungs-Handlers
-segmentsInput.addEventListener('change', (e) => {
-    if (confirm('All layers will be reset!\nAre you sure you want to continue?')) {
-        resetAfterSegmentChange();
-    } else {
-        segmentsInput.value = tempSegments;
-        segmentValue.textContent = tempSegments;
-    }
-});
-
-segmentsInput.addEventListener('input', (e) => {
-    segmentValue.textContent = e.target.value;
-});
-
-brushSizeInput.addEventListener('input', (e) => {
-    brushValue.textContent = e.target.value;
-});
-
 function setTool(tool) {
     currentTool = tool;
     document.querySelectorAll('[id^="tool"]').forEach(btn => {
@@ -2004,6 +1618,389 @@ function syncUIStateFromDOM() {
     updateCanvasAndPreview();
 }
 
+// --- Drawing event handlers ---
+drawingCanvas.addEventListener('mousedown', (e) => {
+    // Middle mouse -> start panning
+    if (e.button === 1) {
+        isPanning = true;
+        panStartX = e.clientX;
+        panStartY = e.clientY;
+        panOriginOffsetX = offsetX;
+        panOriginOffsetY = offsetY;
+        updateTransformStyle();
+        // prevent default to avoid autoscroll
+        e.preventDefault();
+        return;
+    }
+
+    // Left click -> drawing
+    if (e.button !== 0) return;
+
+    saveState();
+    isDrawing = true;
+
+    const p = screenToCanvasCoords(e.clientX, e.clientY);
+    lastX = p.x;
+    lastY = p.y;
+    startX = lastX;
+    startY = lastY;
+
+    const currentLayer = getCurrentLayer();
+    previewImageData = currentLayer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+
+    if (currentTool === 'bucket') {
+        floodFill(Math.round(lastX), Math.round(lastY), layers[currentLayerIndex].color);
+        isDrawing = false;
+    }
+});
+
+// Mouse move: either pan or draw
+window.addEventListener('mousemove', (e) => {
+    if (isPanning) {
+        const dx = e.clientX - panStartX;
+        const dy = e.clientY - panStartY;
+        offsetX = panOriginOffsetX + dx;
+        offsetY = panOriginOffsetY + dy;
+        clampPan();
+        updateTransformStyle();
+        return;
+    }
+
+    if (!isDrawing) return;
+
+    const p = screenToCanvasCoords(e.clientX, e.clientY);
+    const x = p.x;
+    const y = p.y;
+
+    const currentLayer = getCurrentLayer();
+    const layerCtx = currentLayer.ctx;
+
+    layerCtx.save();
+    applySegmentClip(layerCtx);
+
+    if (currentTool === 'brush' || currentTool === 'eraser') {
+        if (currentTool === 'eraser') {
+            layerCtx.globalCompositeOperation = 'destination-out';
+            layerCtx.strokeStyle = 'rgba(0,0,0,1)';
+        } else {
+            layerCtx.globalCompositeOperation = 'source-over';
+            layerCtx.strokeStyle = layers[currentLayerIndex].color;
+        }
+
+        layerCtx.lineWidth = parseInt(brushSizeInput.value);
+        layerCtx.lineCap = 'round';
+        layerCtx.lineJoin = 'round';
+
+        layerCtx.beginPath();
+        layerCtx.moveTo(lastX, lastY);
+        layerCtx.lineTo(x, y);
+        layerCtx.stroke();
+
+        lastX = x;
+        lastY = y;
+
+        layerCtx.restore();
+        updateCanvasAndPreview();
+    } else if (currentTool === 'line' || currentTool === 'circle' || currentTool === 'rectangle') {
+        layerCtx.putImageData(previewImageData, 0, 0);
+
+        layerCtx.globalCompositeOperation = 'source-over';
+        layerCtx.strokeStyle = layers[currentLayerIndex].color;
+        layerCtx.lineWidth = parseInt(brushSizeInput.value);
+        layerCtx.lineCap = 'round';
+
+        if (currentTool === 'line') {
+            layerCtx.beginPath();
+            layerCtx.moveTo(startX, startY);
+            layerCtx.lineTo(x, y);
+            layerCtx.stroke();
+        } else if (currentTool === 'circle') {
+            const radius = Math.hypot(x - startX, y - startY);
+            layerCtx.beginPath();
+            layerCtx.arc(startX, startY, radius, 0, Math.PI * 2);
+            layerCtx.stroke();
+        } else if (currentTool === 'rectangle') {
+            layerCtx.strokeRect(startX, startY, x - startX, y - startY);
+        }
+
+        layerCtx.restore();
+        updateCanvasAndPreview();
+    }
+});
+
+window.addEventListener('mouseup', (e) => {
+    if (isPanning && e.button === 1) {
+        isPanning = false;
+        updateTransformStyle();
+        return;
+    }
+    isDrawing = false;
+});
+
+drawingCanvas.addEventListener('mouseleave', () => {
+    isDrawing = false;
+});
+
+// --- Touch events: single-finger drawing, two-finger pinch/pan ---
+drawingCanvas.addEventListener('touchstart', (e) => {
+    // prevent the browser default (scroll/zoom)
+    e.preventDefault();
+
+    const touches = e.touches;
+
+    if (touches.length === 1) {
+        // single-finger: drawing (like before)
+        saveState();
+        isDrawing = true;
+        const touch = touches[0];
+        const p = screenToCanvasCoords(touch.clientX, touch.clientY);
+        lastX = p.x;
+        lastY = p.y;
+        startX = lastX;
+        startY = lastY;
+        const currentLayer = getCurrentLayer();
+        previewImageData = currentLayer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+
+        if (currentTool === 'bucket') {
+            floodFill(Math.round(lastX), Math.round(lastY), layers[currentLayerIndex].color);
+            isDrawing = false;
+        }
+        // ensure not in pinch mode
+        isPinching = false;
+        pinchData = null;
+    } else if (touches.length === 2) {
+        // two-finger: start pinch/zoom + pan
+        isDrawing = false; // stop any single-finger drawing
+        isPinching = true;
+
+        const t0 = touches[0];
+        const t1 = touches[1];
+
+        const startDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const centerClientX = (t0.clientX + t1.clientX) / 2;
+        const centerClientY = (t0.clientY + t1.clientY) / 2;
+
+        const rect = drawingCanvas.getBoundingClientRect();
+        // px = canvas-space coordinate (used later to keep point under midpoint stable)
+        const px = (centerClientX - rect.left) / scale;
+        const py = (centerClientY - rect.top) / scale;
+
+        pinchData = {
+            startDist,
+            initialScale: scale,
+            panOriginOffsetX: offsetX,
+            panOriginOffsetY: offsetY,
+            startCenterClientX: centerClientX,
+            startCenterClientY: centerClientY,
+            startPx: px,
+            startPy: py
+        };
+    } else {
+        // 3+ touches: ignore for now
+        isDrawing = false;
+    }
+}, { passive: false });
+
+drawingCanvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const touches = e.touches;
+
+    if (isPinching && touches.length >= 2 && pinchData) {
+        // handle pinch + two-finger pan
+        const t0 = touches[0];
+        const t1 = touches[1];
+
+        const newDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const centerClientX = (t0.clientX + t1.clientX) / 2;
+        const centerClientY = (t0.clientY + t1.clientY) / 2;
+
+        const scaleFactor = newDist / pinchData.startDist;
+        let newScale = pinchData.initialScale * scaleFactor;
+        newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
+
+        // movement of midpoint -> pan
+        const dxCenter = centerClientX - pinchData.startCenterClientX;
+        const dyCenter = centerClientY - pinchData.startCenterClientY;
+
+        // compute px/py relative to initial scale so the point under center stays stable
+        // (use startPx/startPy computed on pinchstart)
+        const deltaScale = newScale - pinchData.initialScale;
+
+        offsetX = pinchData.panOriginOffsetX + dxCenter - deltaScale * pinchData.startPx;
+        offsetY = pinchData.panOriginOffsetY + dyCenter - deltaScale * pinchData.startPy;
+
+        scale = newScale;
+        clampPan();
+        updateTransformStyle();
+        return;
+    }
+
+    // if not pinching, maybe single touch drawing
+    if (touches.length === 1 && isDrawing) {
+        const touch = touches[0];
+        const p = screenToCanvasCoords(touch.clientX, touch.clientY);
+        const x = p.x;
+        const y = p.y;
+
+        const currentLayer = getCurrentLayer();
+        const layerCtx = currentLayer.ctx;
+
+        layerCtx.save();
+        applySegmentClip(layerCtx);
+
+        if (currentTool === 'brush' || currentTool === 'eraser') {
+            if (currentTool === 'eraser') {
+                layerCtx.globalCompositeOperation = 'destination-out';
+                layerCtx.strokeStyle = 'rgba(0,0,0,1)';
+            } else {
+                layerCtx.globalCompositeOperation = 'source-over';
+                layerCtx.strokeStyle = layers[currentLayerIndex].color;
+            }
+
+            layerCtx.lineWidth = parseInt(brushSizeInput.value);
+            layerCtx.lineCap = 'round';
+            layerCtx.lineJoin = 'round';
+
+            layerCtx.beginPath();
+            layerCtx.moveTo(lastX, lastY);
+            layerCtx.lineTo(x, y);
+            layerCtx.stroke();
+
+            lastX = x;
+            lastY = y;
+
+            layerCtx.restore();
+            updateCanvasAndPreview();
+        } else if (currentTool === 'line' || currentTool === 'circle' || currentTool === 'rectangle') {
+            layerCtx.putImageData(previewImageData, 0, 0);
+
+            layerCtx.globalCompositeOperation = 'source-over';
+            layerCtx.strokeStyle = layers[currentLayerIndex].color;
+            layerCtx.lineWidth = parseInt(brushSizeInput.value);
+            layerCtx.lineCap = 'round';
+
+            if (currentTool === 'line') {
+                layerCtx.beginPath();
+                layerCtx.moveTo(startX, startY);
+                layerCtx.lineTo(x, y);
+                layerCtx.stroke();
+            } else if (currentTool === 'circle') {
+                const radius = Math.hypot(x - startX, y - startY);
+                layerCtx.beginPath();
+                layerCtx.arc(startX, startY, radius, 0, Math.PI * 2);
+                layerCtx.stroke();
+            } else if (currentTool === 'rectangle') {
+                layerCtx.strokeRect(startX, startY, x - startX, y - startY);
+            }
+
+            layerCtx.restore();
+            updateCanvasAndPreview();
+        }
+    }
+}, { passive: false });
+
+drawingCanvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    const touches = e.touches;
+
+    if (isPinching) {
+        // if fingers reduced below 2 -> stop pinching
+        if (touches.length < 2) {
+            isPinching = false;
+            pinchData = null;
+            clampPan();
+            updateTransformStyle();
+        }
+        // if still 2+ touches remain, keep pinching (handled by touchmove)
+        return;
+    }
+
+    // if single-finger ended -> stop drawing
+    if (isDrawing && touches.length === 0) {
+        isDrawing = false;
+    }
+});
+
+// Wheel: Zoom to mouse
+drawingCanvas.addEventListener('wheel', (e) => {
+    // only if pointer is over canvas
+    e.preventDefault();
+
+    const ZOOM_FACTOR = 1.12;
+    const delta = e.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
+
+    const rect = drawingCanvas.getBoundingClientRect();
+    // convert screen to canvas internal coords BEFORE change
+    const px = (e.clientX - rect.left) / scale;
+    const py = (e.clientY - rect.top) / scale;
+
+    const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * delta));
+    // adjust offset so that (px,py) remains under the cursor
+    offsetX = offsetX - (newScale - scale) * px;
+    offsetY = offsetY - (newScale - scale) * py;
+    scale = newScale;
+    clampPan();
+    updateTransformStyle();
+}, { passive: false });
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+    if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        undo();
+    }
+
+    if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
+        e.preventDefault();
+        redo();
+    }
+});
+
+document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        saveProjectInBrowser();
+    }
+})
+
+// background color button listener
+bgColorBtn.addEventListener('click', () => {
+    cpLayerIndex = -1;
+    openColorPopup(canvasBgColor);
+});
+
+showGuidesInput.addEventListener('change', function () {
+    showGuides = this.checked;
+    updateCanvasAndPreview();
+});
+
+showOnlySelectedInput.addEventListener('change', function () {
+    showOnlySelected = this.checked;
+    renderDrawingCanvas();
+});
+
+segmentsInput.addEventListener('pointerdown', (e) => {
+    tempSegments = e.target.value;
+});
+
+// Steuerungs-Handlers
+segmentsInput.addEventListener('change', (e) => {
+    if (confirm('All layers will be reset!\nAre you sure you want to continue?')) {
+        resetAfterSegmentChange();
+    } else {
+        segmentsInput.value = tempSegments;
+        segmentValue.textContent = tempSegments;
+    }
+});
+
+segmentsInput.addEventListener('input', (e) => {
+    segmentValue.textContent = e.target.value;
+});
+
+brushSizeInput.addEventListener('input', (e) => {
+    brushValue.textContent = e.target.value;
+});
+
 // ensure canvas resizes with window
 window.addEventListener('resize', () => {
     clearTimeout(window.__resizeTimeoutPreview);
@@ -2025,7 +2022,6 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // also react to orientation changes / media query changes
-const mq = window.matchMedia('(max-width: 980px)');
 if (mq.addEventListener) {
     mq.addEventListener('change', () => syncOtherControlsPanel());
 } else if (mq.addEventListener) {
