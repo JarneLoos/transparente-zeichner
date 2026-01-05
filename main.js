@@ -1784,9 +1784,14 @@ async function openProjectsPopup() {
             img.style.borderRadius = "6px";
             img.style.flex = "0 0 auto";
 
+            const content = document.createElement("div");
+            content.style.flex = "1";
+            content.style.alignItems = "center";
+
             const meta = document.createElement("div");
             meta.style.flex = "1";
-            meta.style.minWidth = "0";
+            meta.style.minWidth = "100px";
+            meta.style.marginBottom = "8px";
 
             const title = document.createElement("div");
             title.textContent = key;
@@ -1795,24 +1800,17 @@ async function openProjectsPopup() {
             title.style.overflow = "hidden";
             title.style.textOverflow = "ellipsis";
 
-            const dateLabel = document.createElement("div");
-            dateLabel.style.opacity = "0.8";
-            dateLabel.style.fontSize = "12px";
-            dateLabel.textContent = "Last saved";
-
             const date = document.createElement("div");
             date.style.opacity = "0.8";
             date.style.fontSize = "12px";
-            date.textContent = formatDate(project?.meta?.exportedAt);
+            date.textContent = `Last saved: ${formatDate(project?.meta?.exportedAt)}`;
 
             meta.appendChild(title);
-            meta.appendChild(dateLabel);
             meta.appendChild(date);
 
             const actions = document.createElement("div");
             actions.style.display = "flex";
             actions.style.gap = "8px";
-            actions.style.margin = "0 10px 0 10px";
             actions.style.flex = "0 0 auto";
 
             const loadBtn = document.createElement("button");
@@ -1838,9 +1836,11 @@ async function openProjectsPopup() {
             actions.appendChild(loadBtn);
             actions.appendChild(delBtn);
 
+            content.appendChild(meta);
+            content.appendChild(actions);
+
             row.appendChild(img);
-            row.appendChild(meta);
-            row.appendChild(actions);
+            row.appendChild(content);
             listEl.appendChild(row);
         }
     };
