@@ -61,6 +61,8 @@ let __exportPopup = null;
 let __exportOutsideListener = null;
 let __importPopup = null;
 let __importOutsideListener = null;
+let __projectsPopup = null;
+let __projectsOutsideListener = null;
 
 // Color picker
 let __colorPopup = null;
@@ -78,9 +80,11 @@ let showOnlySelected = false;
 let tempSegments = 0;
 
 // Save / load
+let projectTitle = '';
+let loadedProjectTitle = '';
+let usingUsedTitle = false;
 const IDB_DB_NAME = 'transparent_project_db';
 const IDB_STORE = 'kv';
-const IDB_KEY_LAST = 'lastProject_v1';
 
 class Layer {
     constructor(name) {
@@ -1260,11 +1264,11 @@ function clearDrawing() {
 }
 
 // Save / load
-function buildCurrentProjectObject() {
+function buildCurrentProjectObject(name) {
     return {
         schemaVersion: 1,
         meta: {
-            name: `transparent_project_${new Date().toISOString()}`,
+            name: name,
             exportedAt: new Date().toISOString(),
         },
         settings: {
@@ -1280,7 +1284,8 @@ function buildCurrentProjectObject() {
                 color: layer.color,
                 image: dataURL
             };
-        })
+        }),
+        preview: drawingCanvas.toDataURL('image/png')
     };
 }
 
@@ -1318,10 +1323,54 @@ async function idbPut(key, value) {
     });
 }
 
+async function idbDelete(key) {
+    const db = await openProjectDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, "readwrite");
+        const store = tx.objectStore(IDB_STORE);
+
+        store.delete(key);
+
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+async function getAllKeys() {
+    const db = await openProjectDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, "readonly");
+        const store = tx.objectStore(IDB_STORE);
+
+        const req = store.getAllKeys();
+        req.onsuccess = () => resolve(req.result); // Array der Keys
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function isKeyUsed(key) {
+    const keys = await getAllKeys();
+
+    if (keys.includes(key)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 async function saveProjectInBrowser() {
     try {
-        const project = buildCurrentProjectObject();
-        await idbPut(IDB_KEY_LAST, project);
+        if (projectTitle === '') {
+            alert('Project title is needed');
+            return;
+        } else if (projectTitle !== loadedProjectTitle) {
+            const used = await isKeyUsed(projectTitle);
+            if (used && !confirm('Title is already used.\nOther project will be overwritten!')) {
+                return;
+            }
+        }
+        const project = buildCurrentProjectObject(projectTitle);
+        await idbPut(projectTitle, project);
         hasUnsavedProgress = false;
         closeExportPopup();
     } catch (err) {
@@ -1330,15 +1379,15 @@ async function saveProjectInBrowser() {
     }
 }
 
-async function loadProjectFromBrowser() {
+async function loadProjectFromBrowser(key) {
     try {
-        const project = await idbGet(IDB_KEY_LAST);
+        const project = await idbGet(key);
         if (!project) {
             alert('No saved project found in browser.');
             return;
         }
-        await loadProject(project); // existiert bei dir schon (async)
-        closeExportPopup();
+        if (!await loadProject(project)) return;
+        closeProjectsPopup();
     } catch (err) {
         console.error(err);
         alert('Loading from browser failed.');
@@ -1348,7 +1397,7 @@ async function loadProjectFromBrowser() {
 
 async function loadProject(project) {
     // Bestätigung vom user
-    if (!confirm('The current project will be overwritten\nAre you sure you want to continue?')) return;
+    if (!confirm('The current project will be overwritten\nAre you sure you want to continue?')) return false;
 
     // Grundvalidierung
     if (!project || !project.meta) throw new Error('Ungültiges Projektformat');
@@ -1372,10 +1421,14 @@ async function loadProject(project) {
         await Promise.all(promises);
     }
 
+    projectTitle = project.meta.name;
+    loadedProjectTitle = project.meta.name;
+
     updateLayersPanel();
     updateCanvasAndPreview();
     updateTransformStyle();
     resetUndoRedo();
+    return true;
 }
 
 function createLayerFromDataURL(layerMeta, idx) {
@@ -1428,8 +1481,14 @@ function importProject() {
 }
 
 async function exportAsJSON() {
-    const filename = `transparent_project_${new Date().toISOString()}.json`;
-    const project = buildCurrentProjectObject();
+    let filename;
+    if (projectTitle === '') {
+        alert('Project title is needed');
+        return;
+    } else {
+        filename = `${projectTitle}.json`
+    }
+    const project = buildCurrentProjectObject(projectTitle);
 
     const blob = new Blob([JSON.stringify(project)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1446,8 +1505,14 @@ async function exportAsJSON() {
 }
 
 function exportAsPNG() {
+    let filename;
+    if (projectTitle === '') {
+        filename = 'preview.png'
+    } else {
+        filename = `${projectTitle}_preview.png`
+    }
     const link = document.createElement('a');
-    link.download = `transparent_preview_${new Date().toISOString()}.json`;
+    link.download = filename;
     link.href = previewCanvas.toDataURL();
     link.click();
 
@@ -1501,7 +1566,13 @@ function exportLayersAsPNG() {
     const dataURL = exportCanvas.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = dataURL;
-    a.download = `transparent_layers_${new Date().toISOString()}.json`;
+    let filename;
+    if (projectTitle === '') {
+        filename = 'layers.png'
+    } else {
+        filename = `${projectTitle}_layers.png`
+    }
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1520,6 +1591,10 @@ function openExportPopup() {
             <h3>Export</h3>
         </div>
 
+        <div>
+            <input type="text" id="project-title" placeholder="Project title" />
+        </div>
+
         <div class="export-options" style="display: grid; grid-template-columns: repeat(1, 1fr); gap: 8px; margin-top: 8px; margin-bottom: 8px;">
             <button class="btn-secondary" onclick="saveProjectInBrowser()">Save project in browser</button>
             <button class="btn-secondary" onclick="exportAsJSON()">Export project (.json)</button>
@@ -1531,6 +1606,17 @@ function openExportPopup() {
             <button class="btn-secondary" onclick="closeExportPopup()">Close</button>
         </div>
     `;
+
+    const titleText = __exportPopup.querySelector('#project-title');
+    titleText.value = projectTitle;
+    titleText.addEventListener('blur', (e) => {
+        projectTitle = titleText.value;
+    });
+    titleText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.target.blur();
+        }
+    });
 
     document.body.appendChild(__exportPopup);
 
@@ -1566,7 +1652,7 @@ function openImportPopup() {
         </div>
 
         <div class="export-options" style="display: grid; grid-template-columns: repeat(1, 1fr); gap: 8px; margin-top: 8px; margin-bottom: 8px;">
-            <button class="btn-secondary" onclick="loadProjectFromBrowser()">Load project from browser</button>
+            <button class="btn-secondary" onclick="openProjectsPopup()">Load project from browser</button>
             <button class="btn-secondary" onclick="importProject()">Import project (.json)</button>
         </div>
                     
@@ -1594,6 +1680,210 @@ function closeImportPopup() {
     if (__importOutsideListener) {
         document.removeEventListener('mousedown', __importOutsideListener);
         __importOutsideListener = null;
+    }
+}
+
+function openProjectsPopup() {
+    closeProjectsPopup();
+
+    // Create popup
+    __projectsPopup = document.createElement('div');
+    __projectsPopup.className = 'export-popup';
+    __projectsPopup.innerHTML = `
+        <div>
+            <h3>Projects</h3>
+        </div>
+
+        Hier soll ein scroll view in dem alle Projekte aufgelistet sind, mit Titel, Preview und Änderungsdatum
+                    
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+            <button class="btn-secondary" onclick="closeProjectsPopup()">Close</button>
+        </div>
+    `;
+
+    document.body.appendChild(__projectsPopup);
+
+    __projectsOutsideListener = (ev) => {
+        if (!__projectsPopup) return;
+        if (!__projectsPopup.contains(ev.target)) {
+            closeProjectsPopup();
+        }
+    };
+    document.addEventListener('mousedown', __projectsOutsideListener);
+}
+
+async function openProjectsPopup() {
+    closeProjectsPopup();
+
+    __projectsPopup = document.createElement("div");
+    __projectsPopup.className = "export-popup";
+    __projectsPopup.innerHTML = `
+    <div>
+        <h3>Projects</h3>
+
+        <div id="projects-scroll"
+            style="
+                max-height: 60vh;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                padding: 12px;
+                margin-top: 8px;
+                margin-bottom: 8px;
+            ">
+            <div style="opacity:.8">Loading…</div>
+        </div>
+
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px">
+            <button class="btn-secondary" id="projects-close-btn">Close</button>
+        </div>
+    </div>
+  `;
+
+    document.body.appendChild(__projectsPopup);
+
+    const listEl = __projectsPopup.querySelector("#projects-scroll");
+    const closeBtn = __projectsPopup.querySelector("#projects-close-btn");
+
+    closeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeProjectsPopup();
+    });
+
+    const formatDate = (iso) => {
+        if (!iso) return "—";
+        const d = new Date(iso);
+        return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
+    };
+
+    const refreshList = async () => {
+        listEl.innerHTML = `<div style="opacity:.8">Loading…</div>`;
+
+        let keys = await getAllKeys();
+
+        const entries = await Promise.all(
+            keys.map(async (key) => {
+                const project = await idbGet(key);
+                return { key, project };
+            })
+        );
+
+        const valid = entries
+            .filter((e) => e && e.project && e.project.meta)
+            .sort((a, b) => {
+                const da = new Date(a.project?.meta?.exportedAt || 0).getTime();
+                const db = new Date(b.project?.meta?.exportedAt || 0).getTime();
+                return db - da;
+            });
+
+        if (valid.length === 0) {
+            listEl.innerHTML = `<div style="opacity:.8">No saved projects found.</div>`;
+            return;
+        }
+
+        listEl.innerHTML = "";
+
+        for (const { key, project } of valid) {
+            const previewSrc = project?.preview || "";
+
+            const row = document.createElement("div");
+            row.style.display = "flex";
+            row.style.alignItems = "center";
+            row.style.gap = "10px";
+            row.style.padding = "8px";
+            row.style.border = "1px solid rgba(0,0,0,.15)";
+            row.style.borderRadius = "8px";
+
+            const img = document.createElement("img");
+            img.src = previewSrc;
+            img.alt = "preview";
+            img.style.width = "72px";
+            img.style.height = "72px";
+            img.style.objectFit = "contain";
+            img.style.background = "rgba(0,0,0,.03)";
+            img.style.borderRadius = "6px";
+            img.style.flex = "0 0 auto";
+
+            const meta = document.createElement("div");
+            meta.style.flex = "1";
+            meta.style.minWidth = "0";
+
+            const title = document.createElement("div");
+            title.textContent = key;
+            title.style.fontWeight = "600";
+            title.style.whiteSpace = "nowrap";
+            title.style.overflow = "hidden";
+            title.style.textOverflow = "ellipsis";
+
+            const dateLable = document.createElement("div");
+            dateLable.style.opacity = "0.8";
+            dateLable.style.fontSize = "12px";
+            dateLable.textContent = `Last saved:`;
+
+            const date = document.createElement("div");
+            date.style.opacity = "0.8";
+            date.style.fontSize = "12px";
+            date.textContent = `${formatDate(project?.meta?.exportedAt)}`;
+
+            meta.appendChild(title);
+            meta.appendChild(dateLable);
+            meta.appendChild(date);
+
+            const actions = document.createElement("div");
+            actions.style.display = "flex";
+            actions.style.gap = "8px";
+            actions.style.margin = "0 10px 0 10px"
+            actions.style.flex = "0 0 auto";
+
+            const loadBtn = document.createElement("button");
+            loadBtn.className = "btn-secondary";
+            loadBtn.type = "button";
+            loadBtn.textContent = "Load";
+            loadBtn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                await loadProjectFromBrowser(key);
+            });
+
+            const delBtn = document.createElement("button");
+            delBtn.className = "btn-secondary";
+            delBtn.type = "button";
+            delBtn.textContent = "Delete";
+            delBtn.addEventListener("click", async (e) => {
+                e.stopPropagation();
+                if (!confirm(`Delete project "${key}"?`)) return;
+                await idbDelete(key);
+                await refreshList();
+            });
+
+            actions.appendChild(loadBtn);
+            actions.appendChild(delBtn);
+
+            row.appendChild(img);
+            row.appendChild(meta);
+            row.appendChild(actions);
+
+            listEl.appendChild(row);
+        }
+    };
+
+    await refreshList();
+
+    __projectsOutsideListener = (ev) => {
+        if (!__projectsPopup) return;
+        if (!__projectsPopup.contains(ev.target)) closeProjectsPopup();
+    };
+    document.addEventListener("mousedown", __projectsOutsideListener);
+}
+
+function closeProjectsPopup() {
+    if (__projectsPopup) {
+        __projectsPopup.remove();
+        __projectsPopup = null;
+    }
+    if (__projectsOutsideListener) {
+        document.removeEventListener('mousedown', __projectsOutsideListener);
+        __projectsOutsideListener = null;
     }
 }
 
@@ -2045,23 +2335,28 @@ drawingCanvas.addEventListener('wheel', (e) => {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', e => {
+    // Undo
     if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
         e.preventDefault();
         undo();
     }
 
+    // Redo
     if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
         e.preventDefault();
         redo();
     }
-});
 
-document.addEventListener('keydown', e => {
+    // Save
     if (e.ctrlKey && e.key === 's') {
         e.preventDefault();
+        if (projectTitle === ''){
+            openExportPopup();
+            return;
+        }
         saveProjectInBrowser();
     }
-})
+});
 
 // background color button listener
 bgColorBtn.addEventListener('click', () => {
