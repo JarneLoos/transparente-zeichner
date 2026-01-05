@@ -1175,7 +1175,7 @@ function cutDetachedAreas() {
     const img = layer.ctx.getImageData(0, 0, w, h);
     const data = img.data;
 
-    const ALPHA_T = 10; // ähnlich deiner floodFill-Toleranz
+    const ALPHA_T = 20; // ähnlich deiner floodFill-Toleranz
     const visited = new Uint8Array(w * h);
 
     let largestComp = null; // {count, pixels: Uint32Array/Array}
@@ -1683,35 +1683,6 @@ function closeImportPopup() {
     }
 }
 
-function openProjectsPopup() {
-    closeProjectsPopup();
-
-    // Create popup
-    __projectsPopup = document.createElement('div');
-    __projectsPopup.className = 'export-popup';
-    __projectsPopup.innerHTML = `
-        <div>
-            <h3>Projects</h3>
-        </div>
-
-        Hier soll ein scroll view in dem alle Projekte aufgelistet sind, mit Titel, Preview und Änderungsdatum
-                    
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
-            <button class="btn-secondary" onclick="closeProjectsPopup()">Close</button>
-        </div>
-    `;
-
-    document.body.appendChild(__projectsPopup);
-
-    __projectsOutsideListener = (ev) => {
-        if (!__projectsPopup) return;
-        if (!__projectsPopup.contains(ev.target)) {
-            closeProjectsPopup();
-        }
-    };
-    document.addEventListener('mousedown', __projectsOutsideListener);
-}
-
 async function openProjectsPopup() {
     closeProjectsPopup();
 
@@ -1720,6 +1691,14 @@ async function openProjectsPopup() {
     __projectsPopup.innerHTML = `
     <div>
         <h3>Projects</h3>
+
+        <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+            <input id="projects-search"
+                type="text"
+                placeholder="Search projects…"
+                style="flex:1; padding:8px; border-radius:8px; border:1px solid rgba(0,0,0,.2);" />
+            <button class="btn-secondary" id="projects-search-clear" type="button">Clear</button>
+        </div>
 
         <div id="projects-scroll"
             style="
@@ -1745,11 +1724,18 @@ async function openProjectsPopup() {
 
     const listEl = __projectsPopup.querySelector("#projects-scroll");
     const closeBtn = __projectsPopup.querySelector("#projects-close-btn");
+    const searchEl = __projectsPopup.querySelector("#projects-search");
+    const clearEl = __projectsPopup.querySelector("#projects-search-clear");
 
     closeBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         closeProjectsPopup();
     });
+
+    const normalize = (s) =>
+        String(s ?? "")
+            .toLowerCase()
+            .trim();
 
     const formatDate = (iso) => {
         if (!iso) return "—";
@@ -1757,34 +1743,27 @@ async function openProjectsPopup() {
         return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
     };
 
-    const refreshList = async () => {
-        listEl.innerHTML = `<div style="opacity:.8">Loading…</div>`;
+    let allProjects = [];     // { key, project }[]
+    let currentQuery = "";
 
-        let keys = await getAllKeys();
+    const renderList = () => {
+        const q = normalize(currentQuery);
 
-        const entries = await Promise.all(
-            keys.map(async (key) => {
-                const project = await idbGet(key);
-                return { key, project };
-            })
-        );
-
-        const valid = entries
-            .filter((e) => e && e.project && e.project.meta)
-            .sort((a, b) => {
-                const da = new Date(a.project?.meta?.exportedAt || 0).getTime();
-                const db = new Date(b.project?.meta?.exportedAt || 0).getTime();
-                return db - da;
+        const filtered = !q
+            ? allProjects
+            : allProjects.filter(({ key, project }) => {
+                const name = project?.meta?.name ?? "";
+                return normalize(key).includes(q) || normalize(name).includes(q);
             });
 
-        if (valid.length === 0) {
-            listEl.innerHTML = `<div style="opacity:.8">No saved projects found.</div>`;
+        if (filtered.length === 0) {
+            listEl.innerHTML = `<div style="opacity:.8">No matching projects.</div>`;
             return;
         }
 
         listEl.innerHTML = "";
 
-        for (const { key, project } of valid) {
+        for (const { key, project } of filtered) {
             const previewSrc = project?.preview || "";
 
             const row = document.createElement("div");
@@ -1816,24 +1795,24 @@ async function openProjectsPopup() {
             title.style.overflow = "hidden";
             title.style.textOverflow = "ellipsis";
 
-            const dateLable = document.createElement("div");
-            dateLable.style.opacity = "0.8";
-            dateLable.style.fontSize = "12px";
-            dateLable.textContent = `Last saved:`;
+            const dateLabel = document.createElement("div");
+            dateLabel.style.opacity = "0.8";
+            dateLabel.style.fontSize = "12px";
+            dateLabel.textContent = "Last saved";
 
             const date = document.createElement("div");
             date.style.opacity = "0.8";
             date.style.fontSize = "12px";
-            date.textContent = `${formatDate(project?.meta?.exportedAt)}`;
+            date.textContent = formatDate(project?.meta?.exportedAt);
 
             meta.appendChild(title);
-            meta.appendChild(dateLable);
+            meta.appendChild(dateLabel);
             meta.appendChild(date);
 
             const actions = document.createElement("div");
             actions.style.display = "flex";
             actions.style.gap = "8px";
-            actions.style.margin = "0 10px 0 10px"
+            actions.style.margin = "0 10px 0 10px";
             actions.style.flex = "0 0 auto";
 
             const loadBtn = document.createElement("button");
@@ -1851,9 +1830,9 @@ async function openProjectsPopup() {
             delBtn.textContent = "Delete";
             delBtn.addEventListener("click", async (e) => {
                 e.stopPropagation();
-                if (!confirm(`Delete project "${key}"?`)) return;
+                if (!confirm(`Delete project ${key}?`)) return;
                 await idbDelete(key);
-                await refreshList();
+                await refreshList();     // lädt allProjects neu, Suchfilter bleibt aktiv
             });
 
             actions.appendChild(loadBtn);
@@ -1862,10 +1841,47 @@ async function openProjectsPopup() {
             row.appendChild(img);
             row.appendChild(meta);
             row.appendChild(actions);
-
             listEl.appendChild(row);
         }
     };
+
+    const refreshList = async () => {
+        listEl.innerHTML = `<div style="opacity:.8">Loading…</div>`;
+
+        const keys = await getAllKeys();
+        const entries = await Promise.all(
+            keys.map(async (key) => {
+                const project = await idbGet(key);
+                return { key, project };
+            })
+        );
+
+        allProjects = entries
+            .filter((e) => e && e.project && e.project.meta)
+            .sort((a, b) => {
+                const da = new Date(a.project?.meta?.exportedAt || 0).getTime();
+                const db = new Date(b.project?.meta?.exportedAt || 0).getTime();
+                return db - da;
+            });
+
+        if (allProjects.length === 0) {
+            listEl.innerHTML = `<div style="opacity:.8">No saved projects found.</div>`;
+            return;
+        }
+
+        renderList();
+    };
+
+    searchEl.addEventListener("input", () => {
+        currentQuery = searchEl.value;
+        renderList();
+    });
+
+    clearEl.addEventListener("click", () => {
+        searchEl.value = "";
+        currentQuery = "";
+        renderList();
+    });
 
     await refreshList();
 
@@ -2350,7 +2366,7 @@ document.addEventListener('keydown', e => {
     // Save
     if (e.ctrlKey && e.key === 's') {
         e.preventDefault();
-        if (projectTitle === ''){
+        if (projectTitle === '') {
             openExportPopup();
             return;
         }
