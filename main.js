@@ -2245,13 +2245,13 @@ drawingCanvas.addEventListener('touchmove', (e) => {
         const layerCtx = currentLayer.ctx;
 
         layerCtx.save();
-        applySegmentClip(layerCtx);
 
         if (currentTool === 'brush' || currentTool === 'eraser') {
             if (currentTool === 'eraser') {
                 layerCtx.globalCompositeOperation = 'destination-out';
                 layerCtx.strokeStyle = 'rgba(0,0,0,1)';
             } else {
+                applySegmentClip(layerCtx);
                 layerCtx.globalCompositeOperation = 'source-over';
                 layerCtx.strokeStyle = layers[currentLayerIndex].color;
             }
