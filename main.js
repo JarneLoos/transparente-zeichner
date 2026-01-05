@@ -2390,6 +2390,10 @@ showOnlySelectedInput.addEventListener('change', function () {
     renderDrawingCanvas();
 });
 
+autoDeleteDetachedInput.addEventListener('change', function () {
+    autoDeleteDetached = this.checked;
+});
+
 segmentsInput.addEventListener('pointerdown', (e) => {
     tempSegments = e.target.value;
 });
