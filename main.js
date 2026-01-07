@@ -633,6 +633,8 @@ function updateLayersPanel() {
 }
 
 function selectLayer(index) {
+    saveState();
+    
     currentLayerIndex = index;
     updateLayersPanel();
 
@@ -910,12 +912,13 @@ function saveState() {
 function getCurrentState() {
     const state = {
         segments: segmentsInput.value,
+        selectedLayer: currentLayerIndex,
         layers: layers.map(layer => ({
             name: layer.name,
             opacity: layer.opacity,
             visible: layer.visible,
             color: layer.color,
-            imgData: layer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height),
+            imgData: layer.ctx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height)
         }))
     }
     return state;
@@ -941,7 +944,8 @@ function restoreState(state) {
         addLayer(layer.name, layer.opacity, layer.visible, layer.color, c, true);
     }
 
-    currentLayerIndex = Math.min(currentLayerIndex, layers.length - 1);
+    console.log(state.selectedLayer);
+    currentLayerIndex = state.selectedLayer;
 
     updateLayersPanel();
     updateCanvasAndPreview();
