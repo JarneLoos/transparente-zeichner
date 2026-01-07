@@ -17,6 +17,8 @@ const redoStack = [];
 const MAX_HISTORY = 50;
 
 // View transform (Zoom / Pan)
+const docHeight = 2048;
+const docWidth = 2048;
 let scale = 1;
 const MIN_SCALE = 1;
 const MAX_SCALE = 10;
@@ -50,8 +52,8 @@ let layers = [];
 let currentLayerIndex = 0;
 
 // Segment positioning / size factor (Segment slightly smaller and centered)
-let segOffX = -200;
-let segOffY = 500;
+let segOffX = 0;
+let segOffY = 0;
 const SEGMENT_RADIUS_FACTOR = 1.75;
 
 // Popup / settings: reusable element
@@ -113,87 +115,36 @@ function adjustCanvasViewportSize() {
     // On narrow screens (CSS @media max-width:980px) sidebars are below the canvas
     const isMobile = window.matchMedia('(max-width: 980px)').matches;
 
-    const leftW = (!isMobile && left) ? left.getBoundingClientRect().width : 0;
-    const rightW = (!isMobile && right) ? right.getBoundingClientRect().width : 0;
+    const leftW = left.getBoundingClientRect().width;
+    const rightW = right.getBoundingClientRect().width;
 
-    // Body/container padding (20px left + 20px right)
-    const horizPadding = 50;
+    // Body/container padding (2 * 24px gap + 2 * 8px body margin)
+    const horizPadding = 64;
 
-    // available width for center column (CSS px)
-    const availableWidth = Math.max(120, window.innerWidth - leftW - rightW - horizPadding);
+    const availableWidth = window.innerWidth - (!isMobile ? leftW + rightW + horizPadding : 16);
 
-    // available height from viewport top to bottom
-    const rect = viewport.getBoundingClientRect();
-    const availableHeight = Math.max(120, window.innerHeight - Math.max(0, rect.top) + 20);
-
-    // Square viewport size: as large as possible but smaller than both
-    const size = Math.floor(Math.min(availableWidth, availableHeight) * 0.95);
+    const verticalPadding = 16;
+    const availableHeight = window.innerHeight - verticalPadding;
+    const size = Math.floor(Math.min(availableWidth, availableHeight));
 
     viewport.style.width = size + 'px';
     viewport.style.height = size + 'px';
 }
 
-// Resize drawing canvas to fit #canvasViewport (HiDPI aware) and preserve layer contents
 function resizeDrawingCanvas() {
     const viewport = document.getElementById('canvasViewport');
     if (!viewport) return;
 
     const rect = viewport.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-
     const displayW = Math.max(1, Math.round(rect.width));
     const displayH = Math.max(1, Math.round(rect.height));
 
-    const pixelW = displayW * dpr;
-    const pixelH = displayH * dpr;
-
-    // If size unchanged, nothing to do
-    if (drawingCanvas.width === pixelW && drawingCanvas.height === pixelH) return;
-
-    // Save old sizes to resample layers
-    const oldW = drawingCanvas.width;
-    const oldH = drawingCanvas.height;
-
-    // --- Keep segment offset proportional to canvas size ---
-    if (oldW && oldH) {
-        const scaleX = pixelW / oldW;
-        const scaleY = pixelH / oldH;
-        segOffX *= scaleX;
-        segOffY *= scaleY;
-    }
-
-    // Resize main drawing canvas (this resets its context)
-    drawingCanvas.width = pixelW;
-    drawingCanvas.height = pixelH;
     drawingCanvas.style.width = displayW + 'px';
     drawingCanvas.style.height = displayH + 'px';
 
-    // re-acquire context
-    ctx = drawingCanvas.getContext('2d');
-
-    // Resample each layer to new size (preserve content)
-    layers.forEach(layer => {
-        const tmp = document.createElement('canvas');
-        tmp.width = oldW || 1;
-        tmp.height = oldH || 1;
-        const tmpCtx = tmp.getContext('2d');
-
-        tmpCtx.clearRect(0, 0, tmp.width, tmp.height);
-        tmpCtx.drawImage(layer.canvas, 0, 0, tmp.width, tmp.height);
-
-        layer.canvas.width = pixelW;
-        layer.canvas.height = pixelH;
-
-        layer.ctx = layer.canvas.getContext('2d');
-        layer.ctx.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-        layer.ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, 0, 0, layer.canvas.width, layer.canvas.height);
-    });
-
     drawingCanvas.style.transformOrigin = '0 0';
     updateTransformStyle();
-
     ensurePreviewBuffer();
-
     updateCanvasAndPreview();
 }
 
@@ -321,6 +272,7 @@ function updatePreview() {
 
 // Draw composed drawing canvas from layer canvases
 function renderDrawingCanvas() {
+    const ctx = drawingCanvas.getContext('2d');
     ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
     ctx.fillStyle = typeof canvasBgColor !== 'undefined' ? canvasBgColor : '#ffffff';
     ctx.fillRect(0, 0, drawingCanvas.width, drawingCanvas.height);
@@ -359,6 +311,7 @@ function updateCanvasAndPreview() {
 function drawSegmentGuideOverlay() {
     const info = getSegmentInfo();
 
+    const ctx = drawingCanvas.getContext('2d');
     ctx.save();
     ctx.strokeStyle = 'rgba(0,0,0,1)';
     ctx.lineWidth = Math.max(1, Math.round(2 * (window.devicePixelRatio || 1)));
@@ -634,7 +587,7 @@ function updateLayersPanel() {
 
 function selectLayer(index) {
     saveState();
-    
+
     currentLayerIndex = index;
     updateLayersPanel();
 
@@ -787,6 +740,11 @@ function resetAfterSegmentChange() {
     segmentsInput.value = tempSegments;
     saveState();
     segmentsInput.value = newSegments;
+
+    const segments = Math.max(1, parseInt(segmentsInput?.value || '12', 10));
+    const anglePerSegment = (Math.PI * 2) / segments;
+    const segW = Math.tan(anglePerSegment) * SEGMENT_RADIUS_FACTOR / 6;
+    segOffX = docWidth * segW;
 
     for (let i = 0; i < layers.length; i++) {
         const layer = layers[i];
@@ -944,7 +902,6 @@ function restoreState(state) {
         addLayer(layer.name, layer.opacity, layer.visible, layer.color, c, true);
     }
 
-    console.log(state.selectedLayer);
     currentLayerIndex = state.selectedLayer;
 
     updateLayersPanel();
@@ -974,7 +931,7 @@ function resetUndoRedo() {
 
 function getSegmentInfo() {
     const segments = Math.max(1, parseInt(segmentsInput?.value || '12', 10));
-    const cx = drawingCanvas.width / 2 + (segOffX || 0);
+    const cx = drawingCanvas.width / 2 - (segOffX || 0);
     const cy = drawingCanvas.height / 2 + (segOffY || 0);
     const radius = Math.min(drawingCanvas.width, drawingCanvas.height) * 0.5 * SEGMENT_RADIUS_FACTOR;
     const anglePerSegment = (Math.PI * 2) / segments;
@@ -1920,6 +1877,15 @@ function setTool(tool) {
 
 // Initialisierung
 function initialize() {
+    drawingCanvas.width = docWidth;
+    drawingCanvas.height = docHeight;
+
+    const segments = Math.max(1, parseInt(segmentsInput?.value || '12', 10));
+    const anglePerSegment = (Math.PI * 2) / segments;
+    const segW = Math.tan(anglePerSegment) * SEGMENT_RADIUS_FACTOR / 6;
+    segOffX = docWidth * segW;
+    segOffY = docHeight * SEGMENT_RADIUS_FACTOR / 4;
+
     // set CSS backgrounds
     drawingCanvas.style.backgroundColor = 'white';
     previewCanvas.style.backgroundColor = 'white';
