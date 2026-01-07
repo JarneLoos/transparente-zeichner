@@ -11,16 +11,15 @@
 }
 
 body {
-    margin: 0;
-    padding: 10px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--color-background);
     color: var(--color-text);
 }
 
 .container {
-    max-width: 1400px;
-    margin: 0 auto;
+    /* max-width: 1400px; */
+    margin: 0;
+    padding: 0;
 }
 
 h1 {
@@ -40,7 +39,7 @@ h3 {
 .app-grid {
     display: grid;
     grid-template-columns: 220px 1fr 330px;
-    gap: 28px;
+    gap: 24px;
     align-items: start;
 }
 
@@ -84,8 +83,7 @@ h3 {
 }
 
 #canvasViewport {
-    width: 80vw;
-    max-width: 900px;
+    width: 100%;
     aspect-ratio: 1 / 1;
     border: 2px solid #ccc;
     overflow: hidden;
@@ -121,7 +119,7 @@ h3 {
     border-radius: 6px;
 }
 
-/* Controls / Layer Panel Styles übernehmen */
+/* Controls / Layer Panel Styles ï¿½bernehmen */
 .controls {
     background: var(--color-surface);
     padding: 20px;
@@ -170,7 +168,7 @@ input[type="range"] {
     background: white;
 }
 
-/* Schmaler Rand für Color Picker */
+/* Schmaler Rand fï¿½r Color Picker */
 input[type="color"] {
     -webkit-appearance: none;
     appearance: none;
@@ -332,7 +330,7 @@ button {
     border-radius: 6px;
 }
 
-/* Stelle sicher, dass das Popup über allem liegt und Klicks abfängt */
+/* Stelle sicher, dass das Popup ï¿½ber allem liegt und Klicks abfï¿½ngt */
 .layer-settings-popup,
 .layer-settings-popup * {
     box-sizing: border-box;
@@ -398,7 +396,7 @@ button {
     border-radius: 6px;
 }
 
-/* Stelle sicher, dass das Popup über allem liegt und Klicks abfängt */
+/* Stelle sicher, dass das Popup ï¿½ber allem liegt und Klicks abfï¿½ngt */
 .export-popup,
 .export-popup * {
     box-sizing: border-box;
@@ -465,7 +463,7 @@ button {
     border-radius: 6px;
 }
 
-/* Stelle sicher, dass das Popup über allem liegt und Klicks abfängt */
+/* Stelle sicher, dass das Popup ï¿½ber allem liegt und Klicks abfï¿½ngt */
 .color-popup,
 .color-popup * {
     box-sizing: border-box;
@@ -540,9 +538,8 @@ button {
     }
 }
 
-/* Desktop / tablet: show other-controls next to left column under the tools */
+/*
 @media (min-width: 981px) {
-    /* create two rows so the other-controls-panel can sit under the left column */
     .app-grid {
         grid-template-columns: 220px 1fr 330px;
         grid-template-rows: auto auto;
@@ -550,14 +547,12 @@ button {
         align-items: start;
     }
 
-    /* ensure the main three columns stay in the first row */
     .sidebar-left,
     .canvas-col,
     .sidebar-right {
         grid-row: 1;
     }
 
-    /* place the other-controls panel directly under the left column */
     .other-controls-panel {
         grid-column: 1 / 2;
         grid-row: 2;
@@ -568,4 +563,4 @@ button {
         max-width: 220px;
         justify-self: start;
     }
-}
+}*/
