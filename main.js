@@ -184,8 +184,8 @@ function ensurePreviewBuffer() {
     const pixelH = displayH * dpr;
 
     if (previewCanvas.width !== pixelW || previewCanvas.height !== pixelH) {
-        previewCanvas.width = pixelW;
-        previewCanvas.height = pixelH;
+        //previewCanvas.width = pixelW;
+        //previewCanvas.height = pixelH;
         previewCanvas.style.width = displayW + 'px';
         previewCanvas.style.height = displayH + 'px';
         previewCtx = previewCanvas.getContext('2d');
@@ -196,7 +196,7 @@ function ensurePreviewBuffer() {
 // UpdatePreview: computes segment metrics in preview display pixels and centers main canvas
 function updatePreview() {
     if (!previewCanvas) return;
-    ensurePreviewBuffer();
+    //ensurePreviewBuffer();
     if (!previewCtx) return;
 
     const dpr = window.devicePixelRatio || 1;
@@ -314,7 +314,7 @@ function drawSegmentGuideOverlay() {
     const ctx = drawingCanvas.getContext('2d');
     ctx.save();
     ctx.strokeStyle = 'rgba(0,0,0,1)';
-    ctx.lineWidth = Math.max(1, Math.round(2 * (window.devicePixelRatio || 1)));
+    ctx.lineWidth = 5;
 
     if (showGuides) {
         ctx.beginPath();
@@ -1034,7 +1034,7 @@ function clampPan() {
     const canvasW = canvasRect.width;
     const canvasH = canvasRect.height;
 
-    const TOLERANCE = 200;
+    const TOLERANCE = viewW * 0.25;
 
     if (canvasW <= viewW) {
         offsetX = (viewW - canvasW) / 2;
@@ -1886,12 +1886,15 @@ function initialize() {
     segOffX = docWidth * segW;
     segOffY = docHeight * SEGMENT_RADIUS_FACTOR / 4;
 
+    previewCanvas.width = docWidth;
+    previewCanvas.height = docHeight;
+
     // set CSS backgrounds
     drawingCanvas.style.backgroundColor = 'white';
     previewCanvas.style.backgroundColor = 'white';
     const bgColorBtn = document.getElementById('bg-color-btn');
     bgColorBtn.style.backgroundColor = 'white';
-
+    
     // Größe des Viewports an Fenster anpassen, dann Canvas-Buffer setzen
     adjustCanvasViewportSize();
     resizeDrawingCanvas();
