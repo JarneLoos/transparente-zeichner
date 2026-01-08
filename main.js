@@ -1225,6 +1225,47 @@ function clearDrawing() {
     updateCanvasAndPreview();
 }
 
+function openImageFullscreen(src) {
+    // Overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'previewFullscreenOverlay';
+    overlay.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+  `;
+
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = 'Preview fullscreen';
+    img.style.cssText = `
+    max-width: 100vw;
+    max-height: 100vh;
+    object-fit: contain;
+    background: #fff;
+  `;
+
+    overlay.appendChild(img);
+    document.body.appendChild(overlay);
+
+    const onKeyDown = (e) => {
+        if (e.key === 'Escape') close();
+    };
+
+    const close = () => {
+        document.removeEventListener('keydown', onKeyDown);
+        overlay.remove();
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    overlay.addEventListener('click', close);
+}
+
 // Save / load
 function buildCurrentProjectObject(name) {
     return {
@@ -1899,6 +1940,15 @@ function initialize() {
     // Größe des Viewports an Fenster anpassen, dann Canvas-Buffer setzen
     adjustCanvasViewportSize();
     resizeDrawingCanvas();
+
+    // Preview Click to fullscreen
+    if (previewCanvas) {
+        previewCanvas.style.cursor = 'zoom-in';
+
+        previewCanvas.addEventListener('click', () => {
+            openImageFullscreen(previewCanvas.toDataURL('image/png'));
+        });
+    }
 
     layers = [];
     addLayer('Layer 1');
