@@ -1051,6 +1051,7 @@ function clampPan() {
         const maxY = 0;
         offsetY = softClamp(offsetY, minY, maxY, TOLERANCE);
     }
+    updateTransformStyle();
 }
 
 function softClamp(value, min, max, tolerance) {
@@ -1894,7 +1895,7 @@ function initialize() {
     previewCanvas.style.backgroundColor = 'white';
     const bgColorBtn = document.getElementById('bg-color-btn');
     bgColorBtn.style.backgroundColor = 'white';
-    
+
     // Größe des Viewports an Fenster anpassen, dann Canvas-Buffer setzen
     adjustCanvasViewportSize();
     resizeDrawingCanvas();
@@ -2026,7 +2027,6 @@ window.addEventListener('mousemove', (e) => {
         offsetX = panOriginOffsetX + dx;
         offsetY = panOriginOffsetY + dy;
         clampPan();
-        updateTransformStyle();
         return;
     }
 
@@ -2202,8 +2202,8 @@ drawingCanvas.addEventListener('touchmove', (e) => {
         offsetY = pinchData.panOriginOffsetY + dyCenter - deltaScale * pinchData.startPy;
 
         scale = newScale;
-        clampPan();
         updateTransformStyle();
+        clampPan();
         return;
     }
 
@@ -2283,7 +2283,6 @@ drawingCanvas.addEventListener('touchend', (e) => {
             isPinching = false;
             pinchData = null;
             clampPan();
-            updateTransformStyle();
         }
         // if still 2+ touches remain, keep pinching (handled by touchmove)
         return;
@@ -2318,8 +2317,8 @@ drawingCanvas.addEventListener('wheel', (e) => {
     offsetX = offsetX - (newScale - scale) * px;
     offsetY = offsetY - (newScale - scale) * py;
     scale = newScale;
-    clampPan();
     updateTransformStyle();
+    clampPan();
 }, { passive: false });
 
 // Keyboard shortcuts
